@@ -4,20 +4,26 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "test": "vitest",
-    "prepare": "husky"
+    "test": "run-p test:types test:lint test:e2e",
+    "prepare": "husky",
+    "test:types": "tsc --noEmit",
+    "test:lint": "eslint .",
+    "test:e2e": "vitest",
+    "prepack": "tsc"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
   "devDependencies": {
+    "@types/node": "^24.10.0",
     "@vitest/browser": "^4.0.7",
     "@vitest/browser-playwright": "^4.0.7",
     "eslint": "^9.39.1",
     "globals": "^16.5.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.2.6",
+    "npm-run-all": "^4.1.5",
     "playwright": "^1.56.1",
     "prettier": "^3.6.2",
     "typescript": "^5.9.3",

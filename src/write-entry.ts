@@ -125,7 +125,9 @@ export async function writeZipEntry({
   }
 }
 
-function getLocalFileHeader(options: EntryOptions): Uint8Array<ArrayBuffer> {
+export function getLocalFileHeader(
+  options: EntryOptions
+): Uint8Array<ArrayBuffer> {
   const nameBytes = textEncoder.encode(options.name);
 
   const headerSize = LOCAL_FILE_HEADER_SIZE + nameBytes.length;
@@ -187,7 +189,7 @@ function getLocalFileHeader(options: EntryOptions): Uint8Array<ArrayBuffer> {
   return header;
 }
 
-function getDataDescriptorStandard(entryInfo: {
+export function getDataDescriptorStandard(entryInfo: {
   uncompressedSize: number;
   compressedSize: number;
 }): Uint8Array<ArrayBuffer> {
@@ -215,7 +217,7 @@ function getDataDescriptorStandard(entryInfo: {
   return descriptor;
 }
 
-function getDataDescriptorZip64(entryInfo: {
+export function getDataDescriptorZip64(entryInfo: {
   uncompressedSize: bigint;
   compressedSize: bigint;
 }): Uint8Array<ArrayBuffer> {

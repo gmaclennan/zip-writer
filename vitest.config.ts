@@ -1,5 +1,15 @@
 import { defineConfig } from "vitest/config";
 import { playwright } from "@vitest/browser-playwright";
+import type { BrowserInstanceOption } from "vitest/node";
+
+const browserInstances: BrowserInstanceOption[] = [
+  { browser: "chromium" },
+  { browser: "firefox" },
+];
+
+if (process.platform === "darwin") {
+  browserInstances.push({ browser: "webkit" });
+}
 
 export default defineConfig({
   test: {
@@ -17,11 +27,7 @@ export default defineConfig({
             enabled: true,
             headless: true,
             provider: playwright(),
-            instances: [
-              { browser: "chromium" },
-              { browser: "firefox" },
-              { browser: "webkit" },
-            ],
+            instances: browserInstances,
           },
         },
       },
