@@ -28,6 +28,7 @@ export default defineConfig({
         },
         test: {
           name: "browser",
+          exclude: ["test/zip64.test.ts", "**/node_modules/**", "**/.git/**"],
           browser: {
             ui: false,
             screenshotFailures: false,

@@ -11,7 +11,6 @@ const BUFFER_SIZE = 16 * 1024; // 16 KB
 const bufferedQueue = new ByteLengthQueuingStrategy({
   highWaterMark: BUFFER_SIZE,
 });
-const unbufferedQueue = { highWaterMark: 0 };
 
 export interface EntryOptions {
   /** Entry name including internal path */
@@ -58,8 +57,8 @@ export class ZipWriter<TIsZip64 extends boolean = false> {
         this.#offset += BigInt(chunk.byteLength);
       },
     },
-    // Unbuffered on the writable side, we already queue entries
-    unbufferedQueue,
+    // default buffer on the writable side, we already queue entries
+    undefined,
     // Readable buffer, so that temporary delays on writable consumers don't
     // block the zip writing.
     bufferedQueue
@@ -293,12 +292,7 @@ export class ZipWriter<TIsZip64 extends boolean = false> {
 }
 
 class EntryWriter {
-  // Unbuffered stream to directly pipe to the zip writer
-  #entryStream = new TransformStream(
-    undefined,
-    unbufferedQueue,
-    unbufferedQueue
-  );
+  #entryStream = new TransformStream();
   #written: Promise<EntryInfo>;
 
   /**

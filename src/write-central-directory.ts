@@ -375,11 +375,11 @@ export function getEOCDZip64(
   offset += 4;
 
   // Number of this disk
-  view.setUint16(offset, 0xffff, true);
+  view.setUint16(offset, 0, true);
   offset += 2;
 
   // Disk where central directory starts
-  view.setUint16(offset, 0xffff, true);
+  view.setUint16(offset, 0, true);
   offset += 2;
 
   // Number of central directory records on this disk
