@@ -23,6 +23,9 @@ export default defineConfig({
         },
       },
       {
+        optimizeDeps: {
+          exclude: ["yauzl-promise"],
+        },
         test: {
           name: "browser",
           browser: {

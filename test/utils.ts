@@ -1,18 +1,29 @@
 // Shim for validateZip that works in both Node and browser contexts
-import type { ZipEntryInfo } from "./commands.js";
+
+export interface ZipEntryInfo {
+  filename: string;
+  uncompressedSize: number;
+  compressedSize: number;
+  compressionMethod: number;
+  sha256: string;
+  isDirectory: boolean;
+  externalFileAttributes: number;
+}
 
 /**
  * Convert Uint8Array to hex string
  */
 function toHex(buffer: Uint8Array): string {
   return Array.from(buffer)
-    .map(b => b.toString(16).padStart(2, "0"))
+    .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }
 
 // In Node context, import the command directly
 // In browser context, use vitest browser commands
-export async function validateZip(zipBuffer: Uint8Array): Promise<ZipEntryInfo[]> {
+export async function validateZip(
+  zipBuffer: Uint8Array
+): Promise<ZipEntryInfo[]> {
   const hexString = toHex(zipBuffer);
 
   // Check if we're in a browser context

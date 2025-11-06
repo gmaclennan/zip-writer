@@ -1,16 +1,7 @@
 import type { BrowserCommand } from "vitest/node";
 import yauzl from "yauzl-promise";
 import { createHash } from "crypto";
-
-export interface ZipEntryInfo {
-  filename: string;
-  uncompressedSize: number;
-  compressedSize: number;
-  compressionMethod: number;
-  sha256: string;
-  isDirectory: boolean;
-  externalFileAttributes: number;
-}
+import type { ZipEntryInfo } from "./utils.js";
 
 /**
  * Validate a ZIP file buffer using yauzl-promise in Node context.
