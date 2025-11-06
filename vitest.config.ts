@@ -15,6 +15,7 @@ if (process.platform === "darwin") {
 export default defineConfig({
   test: {
     include: ["test/**/*.test.ts"],
+    reporters: process.env.CI ? ["verbose"] : ["default"],
     projects: [
       {
         test: {
