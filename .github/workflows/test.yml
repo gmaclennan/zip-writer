@@ -27,6 +27,7 @@ jobs:
 
       - name: Get Playwright version
         id: playwright-version
+        shell: bash
         run: |
           echo "PLAYWRIGHT_VERSION=$(npx playwright --version)" >> $GITHUB_OUTPUT
 
