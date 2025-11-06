@@ -1,56 +1,12 @@
 import { describe, it, assert } from "vitest";
 import { ZipWriter } from "../src/index.js";
-import { validateZip } from "./utils.js";
-
-/**
- * Helper to collect a ReadableStream into a Uint8Array
- */
-async function collectStream(
-  stream: ReadableStream<ArrayBufferView>
-): Promise<Uint8Array> {
-  const chunks: Uint8Array[] = [];
-  const reader = stream.getReader();
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(
-        new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
-      );
-    }
-  } finally {
-    reader.releaseLock();
-  }
-
-  const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-  const result = new Uint8Array(totalLength);
-  let offset = 0;
-  for (const chunk of chunks) {
-    result.set(chunk, offset);
-    offset += chunk.length;
-  }
-  return result;
-}
-
-/**
- * Calculate SHA256 hash of data using Web Crypto API (browser) or crypto module (Node)
- */
-async function sha256(data: Uint8Array): Promise<string> {
-  if (typeof window !== "undefined" && window.crypto?.subtle) {
-    // Browser: use Web Crypto API
-    const hashBuffer = await crypto.subtle.digest(
-      "SHA-256",
-      data as BufferSource
-    );
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-  } else {
-    // Node: use crypto module
-    const { createHash } = await import("crypto");
-    return createHash("sha256").update(data).digest("hex");
-  }
-}
+import {
+  validateZip,
+  collectStream,
+  sha256,
+  getDosTime,
+  getDosDate,
+} from "./utils.js";
 
 describe("ZIP Integration Tests", () => {
   describe("Single file archives", () => {
@@ -262,8 +218,16 @@ describe("ZIP Integration Tests", () => {
 
       const entry = entries[0];
       assert.strictEqual(entry.filename, fileName);
-      // Just verify that the entry exists with proper metadata
-      assert.isAbove(entry.uncompressedSize, 0, "Should have content");
+      assert.equal(
+        entry.lastModTime,
+        getDosTime(testDate),
+        "Modification time should match"
+      );
+      assert.equal(
+        entry.lastModDate,
+        getDosDate(testDate),
+        "Modification date should match"
+      );
     });
 
     it("should handle file comments", async () => {
@@ -289,7 +253,7 @@ describe("ZIP Integration Tests", () => {
       const entry = entries[0];
       assert.strictEqual(entry.filename, fileName);
       // Entry should exist - comment validation depends on reader implementation
-      assert.isDefined(entry, "Entry should exist");
+      assert.equal(entry.comment, fileComment, "File comment should match");
     });
 
     it("should handle Unix file permissions", async () => {

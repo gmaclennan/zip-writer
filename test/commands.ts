@@ -6,7 +6,17 @@ import { tmpdir, platform } from "os";
 import { join, dirname } from "path";
 import { execa } from "execa";
 import { fileURLToPath } from "url";
-import type { ZipEntryInfo } from "./utils.js";
+
+type YauzlEntryInfo = {
+  [K in keyof yauzl.Entry]: yauzl.Entry[K] extends Function
+    ? never
+    : yauzl.Entry[K];
+};
+
+export type ZipEntryInfo = YauzlEntryInfo & {
+  sha256: string;
+  isDirectory: boolean;
+};
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -75,14 +85,12 @@ export const validateZip: BrowserCommand<[zipBuffer: any]> = async (
 
       const isDirectory = entry.filename.endsWith("/");
 
+      const { zip, _ref, ...yauzlEntryInfo } = entry as any;
+
       entries.push({
-        filename: entry.filename,
-        uncompressedSize: entry.uncompressedSize,
-        compressedSize: entry.compressedSize,
-        compressionMethod: entry.compressionMethod,
+        ...yauzlEntryInfo,
         sha256: hash.digest("hex"),
         isDirectory,
-        externalFileAttributes: entry.externalFileAttributes,
       });
     }
 
