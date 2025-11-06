@@ -4,7 +4,7 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "test": "run-p test:types test:lint test:e2e",
+    "test": "run-s test:types test:lint test:e2e",
     "prepare": "husky",
     "test:types": "tsc --noEmit",
     "test:lint": "eslint .",
@@ -17,6 +17,7 @@
   "description": "",
   "devDependencies": {
     "@types/node": "^24.10.0",
+    "@types/yauzl-promise": "^4.0.1",
     "@vitest/browser": "^4.0.7",
     "@vitest/browser-playwright": "^4.0.7",
     "eslint": "^9.39.1",
@@ -27,6 +28,7 @@
     "playwright": "^1.56.1",
     "prettier": "^3.6.2",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.7"
+    "vitest": "^4.0.7",
+    "yauzl-promise": "^4.0.0"
   }
 }

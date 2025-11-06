@@ -16,7 +16,7 @@ import {
   DATA_DESCRIPTOR_SIZE_ZIP64,
 } from "./constants.js";
 import { getDosTime, getDosDate } from "./utils.js";
-import { CRC32 } from "./crc.js";
+import { crc32 } from "./crc.js";
 
 const textEncoder = new TextEncoder();
 
@@ -40,7 +40,7 @@ export async function writeZipEntry({
 }) {
   let uncompressedSize = BigInt(0);
   let compressedSize = BigInt(0);
-  const crc = new CRC32();
+  let crc = 0;
 
   await writer.write(getLocalFileHeader(entryOptions));
 
@@ -52,7 +52,7 @@ export async function writeZipEntry({
       const byteLength = BigInt(value.byteLength);
       uncompressedSize += byteLength;
       compressedSize += byteLength;
-      crc.update(value);
+      crc = crc32(value, crc);
       await writer.write(value);
     }
   } else {
@@ -67,7 +67,7 @@ export async function writeZipEntry({
           const { value, done } = await reader.read();
           if (done) break;
           uncompressedSize += BigInt(value.byteLength);
-          crc.update(value);
+          crc = crc32(value, crc);
           await compressionWriter.write(value);
         }
         await compressionWriter.close();
@@ -104,7 +104,7 @@ export async function writeZipEntry({
     const entryInfo: EntryInfoZip64 = {
       ...entryOptions,
       startOffset,
-      crc32: crc.digest(),
+      crc32: crc,
       uncompressedSize,
       compressedSize,
       zip64: true,
@@ -115,7 +115,7 @@ export async function writeZipEntry({
     const entryInfo: EntryInfoStandard = {
       ...entryOptions,
       startOffset: Number(startOffset),
-      crc32: crc.digest(),
+      crc32: crc,
       uncompressedSize: Number(uncompressedSize),
       compressedSize: Number(compressedSize),
       zip64: false,

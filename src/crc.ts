@@ -23,40 +23,48 @@
 
 import { lookup } from "./crc-lookup.js";
 
-export class CRC32 {
-  #crc = ~0;
-  update(data: Uint8Array<ArrayBuffer>) {
-    let i = 0;
-    let length = data.byteLength;
-    let crc = this.#crc;
-    while (length >= 16) {
-      crc =
-        lookup[15][data[i++] ^ (crc & 0xff)] ^
-        lookup[14][data[i++] ^ ((crc >>> 8) & 0xff)] ^
-        lookup[13][data[i++] ^ ((crc >>> 16) & 0xff)] ^
-        lookup[12][data[i++] ^ (crc >>> 24)] ^
-        lookup[11][data[i++]] ^
-        lookup[10][data[i++]] ^
-        lookup[9][data[i++]] ^
-        lookup[8][data[i++]] ^
-        lookup[7][data[i++]] ^
-        lookup[6][data[i++]] ^
-        lookup[5][data[i++]] ^
-        lookup[4][data[i++]] ^
-        lookup[3][data[i++]] ^
-        lookup[2][data[i++]] ^
-        lookup[1][data[i++]] ^
-        lookup[0][data[i++]];
+/**
+ * Computes a 32-bit Cyclic Redundancy Check checksum of data. If value is
+ * specified, it is used as the starting value of the checksum, otherwise, 0 is
+ * used as the starting value.
+ *
+ * @param data - The input data to compute the checksum for.
+ * @param value -  An optional starting value. It must be a 32-bit unsigned integer. Default: 0
+ * @returns The computed CRC32 checksum.
+ */
+export function crc32(
+  data: Uint8Array<ArrayBuffer>,
+  value: number = 0
+): number {
+  let crc = ~value;
+  let i = 0;
+  let length = data.byteLength;
 
-      length -= 16;
-    }
+  while (length >= 16) {
+    crc =
+      lookup[15][data[i++] ^ (crc & 0xff)] ^
+      lookup[14][data[i++] ^ ((crc >>> 8) & 0xff)] ^
+      lookup[13][data[i++] ^ ((crc >>> 16) & 0xff)] ^
+      lookup[12][data[i++] ^ (crc >>> 24)] ^
+      lookup[11][data[i++]] ^
+      lookup[10][data[i++]] ^
+      lookup[9][data[i++]] ^
+      lookup[8][data[i++]] ^
+      lookup[7][data[i++]] ^
+      lookup[6][data[i++]] ^
+      lookup[5][data[i++]] ^
+      lookup[4][data[i++]] ^
+      lookup[3][data[i++]] ^
+      lookup[2][data[i++]] ^
+      lookup[1][data[i++]] ^
+      lookup[0][data[i++]];
 
-    while (length-- > 0) {
-      crc = (crc >>> 8) ^ lookup[0][(crc & 0xff) ^ data[i++]];
-    }
-    this.#crc = crc;
+    length -= 16;
   }
-  digest(): number {
-    return ~this.#crc >>> 0;
+
+  while (length-- > 0) {
+    crc = (crc >>> 8) ^ lookup[0][(crc & 0xff) ^ data[i++]];
   }
+
+  return ~crc >>> 0;
 }

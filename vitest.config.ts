@@ -1,6 +1,7 @@
 import { defineConfig } from "vitest/config";
 import { playwright } from "@vitest/browser-playwright";
 import type { BrowserInstanceOption } from "vitest/node";
+import { validateZip } from "./test/commands.js";
 
 const browserInstances: BrowserInstanceOption[] = [
   { browser: "chromium" },
@@ -13,6 +14,7 @@ if (process.platform === "darwin") {
 
 export default defineConfig({
   test: {
+    include: ["test/**/*.test.ts"],
     projects: [
       {
         test: {
@@ -24,10 +26,15 @@ export default defineConfig({
         test: {
           name: "browser",
           browser: {
+            ui: false,
+            screenshotFailures: false,
             enabled: true,
             headless: true,
             provider: playwright(),
             instances: browserInstances,
+            commands: {
+              validateZip,
+            },
           },
         },
       },

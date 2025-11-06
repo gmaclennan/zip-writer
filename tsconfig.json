@@ -12,7 +12,6 @@
     // Set to empty to avoid loading node types automatically
     "typeRoots": [],
     // For nodejs:
-    // "lib": ["esnext"],
     // "types": ["node"],
     // and npm install -D @types/node
 
