@@ -28,10 +28,10 @@ async function validateWithUnzip(zipFile: string): Promise<void> {
 
   if (isWindows) {
     // Windows: use tar command (available in Windows 10+)
-    await execa("tar", ["-tf", zipFile]);
+    await execa("tar", ["-tf", zipFile], { timeout: 5000 });
   } else {
     // macOS/Linux: use unzip -t
-    await execa("unzip", ["-t", zipFile]);
+    await execa("unzip", ["-t", zipFile], { timeout: 5000 });
   }
 }
 
@@ -42,7 +42,7 @@ async function validateWithPython(zipFile: string): Promise<void> {
   const scriptPath = join(__dirname, "validate-zip.py");
 
   // Run Python validation
-  await execa("python3", [scriptPath, zipFile]);
+  await execa("python3", [scriptPath, zipFile], { timeout: 5000 });
 }
 
 /**
