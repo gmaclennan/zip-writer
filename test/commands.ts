@@ -62,8 +62,10 @@ export const validateZip: BrowserCommand<[zipBuffer: any]> = async (
     const tempFile = join(tempDir, "test.zip");
     await writeFile(tempFile, buffer);
 
-    await validateWithPython(tempFile);
-    await validateWithUnzip(tempFile);
+    await Promise.all([
+      validateWithPython(tempFile),
+      validateWithUnzip(tempFile),
+    ]);
 
     const zipFile = await yauzl.fromBuffer(buffer);
     const entries: ZipEntryInfo[] = [];
