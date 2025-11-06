@@ -25,7 +25,7 @@ export async function validateZip(
   zipBuffer: Uint8Array
 ): Promise<ZipEntryInfo[]> {
   const hexString = toHex(zipBuffer);
-  let result;
+  let result: ZipEntryInfo[] | { error: Error };
 
   // Check if we're in a browser context
   if (typeof window !== "undefined") {
@@ -43,4 +43,13 @@ export async function validateZip(
   }
 
   return result;
+}
+
+// if you are using TypeScript, you can augment the module
+declare module "vitest/browser" {
+  interface BrowserCommands {
+    validateZip: (
+      zipAsHex: string
+    ) => Promise<ZipEntryInfo[] | { error: Error }>;
+  }
 }
