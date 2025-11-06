@@ -36,7 +36,7 @@ jobs:
         shell: bash
         run: |
           if [ "${{ runner.os }}" == "Windows" ]; then
-            echo "path=%USERPROFILE%\\AppData\\Local\\ms-playwright" >> $GITHUB_OUTPUT
+            echo "path=$USERPROFILE\\AppData\\Local\\ms-playwright" >> $GITHUB_OUTPUT
           elif [ "${{ runner.os }}" == "macOS" ]; then
             echo "path=~/Library/Caches/ms-playwright" >> $GITHUB_OUTPUT
           else
