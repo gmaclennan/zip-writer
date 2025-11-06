@@ -9,11 +9,11 @@
   },
   "type": "module",
   "scripts": {
-    "test": "run-s test:types test:lint test:e2e",
+    "test": "run-s test:types test:lint test:vitest",
     "prepare": "husky",
     "test:types": "tsc --noEmit",
     "test:lint": "eslint .",
-    "test:e2e": "vitest",
+    "test:vitest": "vitest",
     "prepack": "rimraf dist && tsc"
   },
   "files": [
@@ -29,6 +29,7 @@
     "@vitest/browser": "^4.0.7",
     "@vitest/browser-playwright": "^4.0.7",
     "eslint": "^9.39.1",
+    "execa": "^9.6.0",
     "globals": "^16.5.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.2.6",

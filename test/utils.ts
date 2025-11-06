@@ -25,16 +25,22 @@ export async function validateZip(
   zipBuffer: Uint8Array
 ): Promise<ZipEntryInfo[]> {
   const hexString = toHex(zipBuffer);
+  let result;
 
   // Check if we're in a browser context
   if (typeof window !== "undefined") {
     // Browser: use vitest browser commands
     const { commands } = await import("vitest/browser");
-    return commands.validateZip(hexString);
+    result = await commands.validateZip(hexString);
   } else {
     // Node: use the command directly
     const { validateZip: validateZipCommand } = await import("./commands.js");
     // Call the command with a mock context
-    return validateZipCommand({} as any, hexString);
+    result = await validateZipCommand({} as any, hexString);
   }
+  if ("error" in result) {
+    throw result.error;
+  }
+
+  return result;
 }
