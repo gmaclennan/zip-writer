@@ -343,6 +343,58 @@ a.click();
 URL.revokeObjectURL(url);
 ```
 
+## Benchmarks
+
+Run using `npm run bench`. On a MacBook Pro (M2 Pro, 2023), Node.js 20.19.0:
+
+### Small files (10 × 10KB)
+
+| Library                       | ops/sec | Relative Speed |
+| ----------------------------- | ------- | -------------- |
+| zip-writable (@node-rs/crc32) | 721.94  | **fastest**    |
+| zip-writable                  | 674.57  | 1.07x slower   |
+| zip-writable (js crc32)       | 659.90  | 1.09x slower   |
+| fflate                        | 553.00  | 1.31x slower   |
+| archiver                      | 338.14  | 2.14x slower   |
+| @zip.js/zip.js                | 279.19  | 2.59x slower   |
+
+### Medium files (100 × 100KB)
+
+| Library                       | ops/sec | Relative Speed |
+| ----------------------------- | ------- | -------------- |
+| zip-writable                  | 23.91   | **fastest**    |
+| zip-writable (@node-rs/crc32) | 22.91   | 1.04x slower   |
+| zip-writable (js crc32)       | 18.93   | 1.26x slower   |
+| archiver                      | 18.10   | 1.32x slower   |
+| @zip.js/zip.js                | 11.65   | 2.05x slower   |
+| fflate                        | 10.27   | 2.33x slower   |
+
+### Large files (5 × 10MB)
+
+| Library                       | ops/sec | Relative Speed |
+| ----------------------------- | ------- | -------------- |
+| zip-writable                  | 7.22    | **fastest**    |
+| zip-writable (@node-rs/crc32) | 6.78    | 1.06x slower   |
+| archiver                      | 5.65    | 1.28x slower   |
+| zip-writable (js crc32)       | 4.82    | 1.50x slower   |
+| fflate                        | 4.20    | 1.72x slower   |
+| @zip.js/zip.js                | 4.00    | 1.81x slower   |
+
+### Many files (1000 × 1KB)
+
+| Library                       | ops/sec | Relative Speed |
+| ----------------------------- | ------- | -------------- |
+| fflate                        | 10.08   | **fastest**    |
+| zip-writable                  | 6.89    | 1.46x slower   |
+| zip-writable (@node-rs/crc32) | 5.94    | 1.70x slower   |
+| zip-writable (js crc32)       | 5.63    | 1.79x slower   |
+| archiver                      | 4.98    | 2.02x slower   |
+| @zip.js/zip.js                | 2.93    | 3.44x slower   |
+
+Note: These benchmarks vary quite a bit, and they aren't an indication that any
+library is "better" than any other. For ZipWriter, these exist as a check to
+ensure that performance isn't significantly worse than other libraries.
+
 ## ZIP64 Support
 
 The library automatically uses ZIP64 format when needed:
