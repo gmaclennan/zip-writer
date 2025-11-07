@@ -29,3 +29,8 @@ export const EOCD64_LOCATOR_SIZE = 20;
 
 // Limits
 export const ZIP64_LIMIT = BigInt(0xffffffff);
+
+/** Little-endian for DataView methods */
+export const LITTLE_ENDIAN = true;
+/** Big-endian for DataView methods */
+export const BIG_ENDIAN = false;

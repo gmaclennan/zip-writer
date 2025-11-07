@@ -14,8 +14,17 @@ import {
   ZIP64_LIMIT,
   DATA_DESCRIPTOR_SIZE,
   DATA_DESCRIPTOR_SIZE_ZIP64,
+  LITTLE_ENDIAN,
+  BIG_ENDIAN,
 } from "./constants.js";
-import { getDosTime, getDosDate } from "./utils.js";
+import {
+  getDosTime,
+  getDosDate,
+  writeDataView,
+  UINT16,
+  UINT32,
+  UINT64,
+} from "./utils.js";
 
 const textEncoder = new TextEncoder();
 
@@ -42,7 +51,7 @@ export async function writeZipEntry({
 }) {
   let uncompressedSize = BigInt(0);
   let compressedSize = BigInt(0);
-  let crc = 0;
+  let checksum = 0;
 
   await writer.write(getLocalFileHeader(entryOptions));
 
@@ -54,7 +63,7 @@ export async function writeZipEntry({
       const byteLength = BigInt(value.byteLength);
       uncompressedSize += byteLength;
       compressedSize += byteLength;
-      crc = crc32(value, crc);
+      checksum = crc32(value, checksum);
       await writer.write(value);
     }
   } else {
@@ -69,7 +78,7 @@ export async function writeZipEntry({
           const { value, done } = await reader.read();
           if (done) break;
           uncompressedSize += BigInt(value.byteLength);
-          crc = crc32(value, crc);
+          checksum = crc32(value, checksum);
           await compressionWriter.write(value);
         }
         await compressionWriter.close();
@@ -106,7 +115,7 @@ export async function writeZipEntry({
     const entryInfo: EntryInfoZip64 = {
       ...entryOptions,
       startOffset,
-      crc32: crc,
+      crc32: checksum,
       uncompressedSize,
       compressedSize,
       zip64: true,
@@ -117,7 +126,7 @@ export async function writeZipEntry({
     const entryInfo: EntryInfoStandard = {
       ...entryOptions,
       startOffset: Number(startOffset),
-      crc32: crc,
+      crc32: checksum,
       uncompressedSize: Number(uncompressedSize),
       compressedSize: Number(compressedSize),
       zip64: false,
@@ -135,86 +144,58 @@ export function getLocalFileHeader(
   const headerSize = LOCAL_FILE_HEADER_SIZE + nameBytes.length;
   const header = new Uint8Array(headerSize);
   const view = new DataView(header.buffer);
-
-  let offset = 0;
-
-  // Local file header signature
-  view.setUint32(offset, LOCAL_FILE_HEADER_SIGNATURE);
-  offset += 4;
-
-  // Version needed to extract
-  view.setUint16(offset, VERSION_NEEDED_STANDARD);
-  offset += 2;
-
-  // General purpose bit flag
-  view.setUint16(offset, GENERAL_PURPOSE_FLAGS);
-  offset += 2;
-
-  // Compression method
-  view.setUint16(
-    offset,
-    options.store ? COMPRESSION_METHOD_STORE : COMPRESSION_METHOD_DEFLATE,
-    true
-  );
-  offset += 2;
-
-  // Last mod file time & date (MS-DOS format)
   const date = options.date || new Date();
-  view.setUint16(offset, getDosTime(date), true);
-  offset += 2;
-  view.setUint16(offset, getDosDate(date), true);
-  offset += 2;
+  const compressionMethod = options.store
+    ? COMPRESSION_METHOD_STORE
+    : COMPRESSION_METHOD_DEFLATE;
 
-  // CRC-32 (0 when using data descriptor)
-  view.setUint32(offset, 0, true);
-  offset += 4;
-
-  // Compressed size (0 when using data descriptor)
-  view.setUint32(offset, 0, true);
-  offset += 4;
-
-  // Uncompressed size (0 when using data descriptor)
-  view.setUint32(offset, 0, true);
-  offset += 4;
-
-  // File name length
-  view.setUint16(offset, nameBytes.length, true);
-  offset += 2;
-
-  // Extra field length
-  view.setUint16(offset, 0, true);
-  offset += 2;
+  let offset = writeDataView(view, [
+    // Local file header signature
+    [UINT32, LOCAL_FILE_HEADER_SIGNATURE, BIG_ENDIAN],
+    // Version needed to extract
+    [UINT16, VERSION_NEEDED_STANDARD, LITTLE_ENDIAN],
+    // General purpose bit flag
+    [UINT16, GENERAL_PURPOSE_FLAGS, LITTLE_ENDIAN],
+    // Compression method
+    [UINT16, compressionMethod, LITTLE_ENDIAN],
+    // Last mod file time & date (MS-DOS format)
+    [UINT16, getDosTime(date), LITTLE_ENDIAN],
+    [UINT16, getDosDate(date), LITTLE_ENDIAN],
+    // CRC-32 (0 when using data descriptor)
+    [UINT32, 0, LITTLE_ENDIAN],
+    // Compressed size (0 when using data descriptor)
+    [UINT32, 0, LITTLE_ENDIAN],
+    // Uncompressed size (0 when using data descriptor)
+    [UINT32, 0, LITTLE_ENDIAN],
+    // File name length
+    [UINT16, nameBytes.length, LITTLE_ENDIAN],
+    // Extra field length
+    [UINT16, 0, LITTLE_ENDIAN],
+  ]);
 
   // File name
   header.set(nameBytes, offset);
-
   return header;
 }
 
 export function getDataDescriptorStandard(entryInfo: {
   uncompressedSize: number;
   compressedSize: number;
+  crc32: number;
 }): Uint8Array<ArrayBuffer> {
   const descriptor = new Uint8Array(DATA_DESCRIPTOR_SIZE);
   const view = new DataView(descriptor.buffer);
 
-  let offset = 0;
-
-  // Data descriptor signature
-  view.setUint32(offset, DATA_DESCRIPTOR_SIGNATURE);
-  offset += 4;
-
-  // CRC-32 (TODO: implement CRC calculation)
-  view.setUint32(offset, 0, true);
-  offset += 4;
-
-  // Compressed size (4 bytes)
-  view.setUint32(offset, entryInfo.compressedSize, true);
-  offset += 4;
-
-  // Uncompressed size (4 bytes)
-  view.setUint32(offset, entryInfo.uncompressedSize, true);
-  offset += 4;
+  writeDataView(view, [
+    // Data descriptor signature
+    [UINT32, DATA_DESCRIPTOR_SIGNATURE, BIG_ENDIAN],
+    // CRC-32 (4 bytes)
+    [UINT32, entryInfo.crc32, LITTLE_ENDIAN],
+    // Compressed size (4 bytes)
+    [UINT32, entryInfo.compressedSize, LITTLE_ENDIAN],
+    // Uncompressed size (4 bytes)
+    [UINT32, entryInfo.uncompressedSize, LITTLE_ENDIAN],
+  ]);
 
   return descriptor;
 }
@@ -222,27 +203,21 @@ export function getDataDescriptorStandard(entryInfo: {
 export function getDataDescriptorZip64(entryInfo: {
   uncompressedSize: bigint;
   compressedSize: bigint;
+  crc32: number;
 }): Uint8Array<ArrayBuffer> {
   const descriptor = new Uint8Array(DATA_DESCRIPTOR_SIZE_ZIP64);
   const view = new DataView(descriptor.buffer);
 
-  let offset = 0;
-
-  // Data descriptor signature
-  view.setUint32(offset, DATA_DESCRIPTOR_SIGNATURE);
-  offset += 4;
-
-  // CRC-32 (TODO: implement CRC calculation)
-  view.setUint32(offset, 0, true);
-  offset += 4;
-
-  // Compressed size (8 bytes for ZIP64)
-  view.setBigUint64(offset, entryInfo.compressedSize, true);
-  offset += 8;
-
-  // Uncompressed size (8 bytes for ZIP64)
-  view.setBigUint64(offset, entryInfo.uncompressedSize, true);
-  offset += 8;
+  writeDataView(view, [
+    // Data descriptor signature
+    [UINT32, DATA_DESCRIPTOR_SIGNATURE, BIG_ENDIAN],
+    // CRC-32 (4 bytes)
+    [UINT32, entryInfo.crc32, LITTLE_ENDIAN],
+    // Compressed size (8 bytes)
+    [UINT64, entryInfo.compressedSize, LITTLE_ENDIAN],
+    // Uncompressed size (8 bytes)
+    [UINT64, entryInfo.uncompressedSize, LITTLE_ENDIAN],
+  ]);
 
   return descriptor;
 }
