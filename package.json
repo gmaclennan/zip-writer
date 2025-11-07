@@ -27,10 +27,18 @@
   "files": [
     "dist"
   ],
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
+  "keywords": [
+    "zip",
+    "archive",
+    "streaming",
+    "web streams",
+    "compression streams",
+    "javascript",
+    "typescript"
+  ],
+  "author": "Gregor MacLennan <gmaclennan@gmail.com>",
+  "license": "MIT",
+  "description": "A modern streaming ZIP archive writer for JavaScript that uses the Web Streams API and Compression Streams API.",
   "devDependencies": {
     "@node-rs/crc32": "^1.10.6",
     "@types/archiver": "^7.0.0",
@@ -57,5 +65,13 @@
   "lint-staged": {
     "*.js": "eslint --cache --fix",
     "*.{js,css,md}": "prettier --write"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gmaclennan/zip-writer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/gmaclennan/zip-writer/issues"
+  },
+  "homepage": "https://github.com/gmaclennan/zip-writer#readme"
 }
