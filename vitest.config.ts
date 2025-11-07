@@ -12,6 +12,16 @@ if (process.platform === "darwin") {
   browserInstances.push({ browser: "webkit" });
 }
 
+const provider =
+  process.platform === "win32"
+    ? playwright({
+        launchOptions: {
+          // An attempt to address flakey test failures on GitHub Actions Windows runners
+          args: ["--no-sandbox", "--disable-gpu"],
+        },
+      })
+    : playwright();
+
 export default defineConfig({
   test: {
     reporters: process.env.CI ? ["verbose"] : ["default"],
@@ -43,7 +53,7 @@ export default defineConfig({
             screenshotFailures: false,
             enabled: true,
             headless: true,
-            provider: playwright(),
+            provider,
             instances: browserInstances,
             commands: {
               validateZip,
