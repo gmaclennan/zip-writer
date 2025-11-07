@@ -9,8 +9,8 @@
   },
   "imports": {
     "#crc32": {
-      "browser": "./src/crc-browser.ts",
-      "default": "./src/crc-node.ts"
+      "browser": "./src/crc-browser.js",
+      "default": "./src/crc-node.js"
     }
   },
   "type": "module",
