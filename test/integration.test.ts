@@ -7,6 +7,7 @@ import {
   getDosTime,
   getDosDate,
 } from "./utils.js";
+import { crc32 } from "../src/crc-browser.js";
 
 describe("ZIP Integration Tests", () => {
   describe("Single file archives", () => {
@@ -469,11 +470,11 @@ describe("ZIP Integration Tests", () => {
       const fileName = "convenience.txt";
       const fileContent = "Hello from createEntry!";
       const fileBytes = new TextEncoder().encode(fileContent);
+      const expectedCrc32 = crc32(fileBytes);
 
       // Write entry using createEntry convenience method
       const entryInfo = await zipWriter.createEntry(fileBytes, {
         name: fileName,
-        store: true,
       });
 
       // Verify returned entry info
@@ -494,6 +495,8 @@ describe("ZIP Integration Tests", () => {
       // Verify content via SHA256
       const expectedHash = await sha256(fileBytes);
       assert.strictEqual(entry.sha256, expectedHash, "Content should match");
+      assert.strictEqual(entry.crc32, expectedCrc32, "CRC32 should match");
+      assert.strictEqual(entry.uncompressedSize, fileBytes.length);
     });
 
     it("should create multiple entries with createEntry", async () => {
