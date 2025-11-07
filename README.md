@@ -31,7 +31,7 @@ const zipWriter = new ZipWriter();
 zipWriter.readable.pipeTo(writableStream);
 
 // Add entries to the ZIP
-const entryWriter = zipWriter.entry({ name: "hello.txt" });
+const entryWriter = zipWriter.createEntryStream({ name: "hello.txt" });
 const writer = entryWriter.writable.getWriter();
 await writer.write(new TextEncoder().encode("Hello, World!"));
 await writer.close();
@@ -90,10 +90,34 @@ metadata like size, CRC32, compression info, etc.
 
 #### Methods
 
-##### `entry(options: EntryOptions): EntryWriter`
+##### `createEntry(data: Uint8Array, options: EntryOptions): Promise<EntryInfo>`
+
+Convenience method to add a buffer as an entry to the zip archive. Returns a
+promise that resolves to the entry info once written. For more efficient
+streaming writes, use `createEntryStream()`.
+
+**Parameters:**
+
+- `data: Uint8Array` - Entry data to write
+- `options.name: string` - Entry name including internal path (required)
+- `options.comment?: string` - Entry comment
+- `options.date?: Date` - Entry date (defaults to current date)
+- `options.mode?: number` - Entry permissions (Unix-style mode)
+- `options.store?: boolean` - Set to `true` to disable compression (defaults to
+  `false`, using DEFLATE compression)
+
+**Example:**
+
+```ts
+const data = new TextEncoder().encode("Hello, World!");
+const entryInfo = await zipWriter.createEntry(data, { name: "hello.txt" });
+console.log(entryInfo);
+```
+
+##### `createEntryStream(options: EntryOptions): EntryWriter`
 
 Create a new entry in the ZIP archive. Returns an `EntryWriter` that you can
-write data to.
+write data to via streams.
 
 **Parameters:**
 
@@ -108,24 +132,26 @@ write data to.
 
 ```ts
 // Simple text file
-const entry = zipWriter.entry({ name: "readme.txt" });
+const entry = zipWriter.createEntryStream({ name: "readme.txt" });
 const writer = entry.writable.getWriter();
 await writer.write(new TextEncoder().encode("Hello!"));
 await writer.close();
 
 // Stream a fetch response
 const response = await fetch(imageUrl);
-response.body.pipeTo(zipWriter.entry({ name: "images/photo.jpg" }).writable);
+response.body.pipeTo(
+  zipWriter.createEntryStream({ name: "images/photo.jpg" }).writable,
+);
 
 // With custom date and permissions
-zipWriter.entry({
+zipWriter.createEntryStream({
   name: "script.sh",
   date: new Date("2024-01-01"),
   mode: 0o755, // executable
 }).writable;
 
 // Disable compression for already-compressed files
-zipWriter.entry({
+zipWriter.createEntryStream({
   name: "video.mp4",
   store: true, // no compression
 }).writable;
@@ -138,8 +164,8 @@ to ensure entries are complete before continuing.
 
 ```ts
 // Add multiple entries
-zipWriter.entry({ name: "file1.txt" }).writable;
-zipWriter.entry({ name: "file2.txt" }).writable;
+zipWriter.createEntryStream({ name: "file1.txt" }).writable;
+zipWriter.createEntryStream({ name: "file2.txt" }).writable;
 
 // Wait for all to complete
 await zipWriter.onceQueueEmpty();
@@ -203,7 +229,8 @@ await zipWriter.finalize({ entries: sorted });
 
 ### `EntryWriter`
 
-Returned by `ZipWriter.entry()`. Provides a writable stream to write entry data.
+Returned by `ZipWriter.createEntryStream()`. Provides a writable stream to write
+entry data.
 
 #### Properties
 
@@ -212,7 +239,7 @@ Returned by `ZipWriter.entry()`. Provides a writable stream to write entry data.
 The writable stream to write entry data to. Close this stream when done writing.
 
 ```ts
-const entryWriter = zipWriter.entry({ name: "data.txt" });
+const entryWriter = zipWriter.createEntryStream({ name: "data.txt" });
 
 // Using a writer
 const writer = entryWriter.writable.getWriter();
@@ -244,7 +271,7 @@ Get entry info. Resolves once all data has been written to the ZIP stream.
 - `zip64: boolean` - Whether this entry uses ZIP64 format
 
 ```ts
-const entryWriter = zipWriter.entry({ name: "test.txt" });
+const entryWriter = zipWriter.createEntryStream({ name: "test.txt" });
 await someStream.pipeTo(entryWriter.writable);
 
 const info = await entryWriter.getEntryInfo();
@@ -267,26 +294,20 @@ async function createZip() {
   const fileStream = Writable.toWeb(createWriteStream("output.zip"));
   zipWriter.readable.pipeTo(fileStream);
 
-  // Add a text file
-  const textEntry = zipWriter.entry({ name: "readme.txt" });
-  const textWriter = textEntry.writable.getWriter();
-  await textWriter.write(new TextEncoder().encode("This is a readme"));
-  await textWriter.close();
+  // Add a text file using createEntry
+  const data1 = new TextEncoder().encode("This is a readme");
+  await zipWriter.createEntry(data1, { name: "readme.txt" });
 
-  // Add files from URLs
+  // Add files from URLs using createEntryStream
   const imageResponse = await fetch("https://example.com/image.png");
   await imageResponse.body.pipeTo(
-    zipWriter.entry({ name: "images/photo.png" }).writable,
+    zipWriter.createEntryStream({ name: "images/photo.png" }).writable,
   );
 
-  // Add a JSON file
+  // Add a JSON file using createEntry
   const data = { hello: "world" };
-  const jsonEntry = zipWriter.entry({ name: "data.json" });
-  const jsonWriter = jsonEntry.writable.getWriter();
-  await jsonWriter.write(
-    new TextEncoder().encode(JSON.stringify(data, null, 2)),
-  );
-  await jsonWriter.close();
+  const jsonData = new TextEncoder().encode(JSON.stringify(data, null, 2));
+  await zipWriter.createEntry(jsonData, { name: "data.json" });
 
   // Wait for all entries and check results
   await zipWriter.onceQueueEmpty();
@@ -307,10 +328,9 @@ createZip().catch(console.error);
 const zipWriter = new ZipWriter();
 
 // Add entries...
+const data = new TextEncoder().encode("Hello");
 zipWriter
-  .entry({ name: "file.txt" })
-  .writable.getWriter()
-  .write(new TextEncoder().encode("Hello"))
+  .createEntry(data, { name: "file.txt" })
   .then(() => zipWriter.finalize());
 
 // Create download link

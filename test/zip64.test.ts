@@ -91,7 +91,9 @@ function createPatternStream(pattern: number, size: number): ReadableStream {
 }
 
 describe("ZIP64 Format Tests (Node only)", () => {
-  it("should stream a small ZIP to file and validate (smoke test)", async ({ onTestFinished }) => {
+  it("should stream a small ZIP to file and validate (smoke test)", async ({
+    onTestFinished,
+  }) => {
     const tempDir = tmpdir();
     const zipPath = join(tempDir, `test-zip64-smoke-${Date.now()}.zip`);
     onTestFinished(() => rm(zipPath, { force: true }));
@@ -99,7 +101,7 @@ describe("ZIP64 Format Tests (Node only)", () => {
     const zipWriter = new ZipWriter();
 
     // Create a small file first to test the streaming mechanism
-    const entryWriter = zipWriter.entry({
+    const entryWriter = zipWriter.createEntryStream({
       name: "test.txt",
       store: true,
     });
@@ -119,7 +121,9 @@ describe("ZIP64 Format Tests (Node only)", () => {
     assert.strictEqual(entries[0].filename, "test.txt");
   });
 
-  it("should create a ZIP64 archive with a file larger than 4GB", async ({ onTestFinished }) => {
+  it("should create a ZIP64 archive with a file larger than 4GB", async ({
+    onTestFinished,
+  }) => {
     const tempDir = tmpdir();
     const zipPath = join(tempDir, `test-zip64-${Date.now()}.zip`);
     onTestFinished(() => rm(zipPath, { force: true }));
@@ -131,7 +135,7 @@ describe("ZIP64 Format Tests (Node only)", () => {
     const pattern = 0x42; // 'B' character
 
     // Write a large file using store (no compression) to save time
-    const entryWriter = zipWriter.entry({
+    const entryWriter = zipWriter.createEntryStream({
       name: "large-file.bin",
       store: true,
     });
@@ -163,7 +167,9 @@ describe("ZIP64 Format Tests (Node only)", () => {
     assert.strictEqual(entry.compressionMethod, 0); // STORE
   }, 120000); // 2 minute timeout for large file
 
-  it("should create a ZIP64 archive with many files (>65535 entries)", async ({ onTestFinished }) => {
+  it("should create a ZIP64 archive with many files (>65535 entries)", async ({
+    onTestFinished,
+  }) => {
     const tempDir = tmpdir();
     const zipPath = join(tempDir, `test-zip64-many-${Date.now()}.zip`);
     onTestFinished(() => rm(zipPath, { force: true }));
@@ -181,7 +187,7 @@ describe("ZIP64 Format Tests (Node only)", () => {
     // Create entries
     const entryPromises: Promise<void>[] = [];
     for (let i = 0; i < fileCount; i++) {
-      const entryWriter = zipWriter.entry({
+      const entryWriter = zipWriter.createEntryStream({
         name: `file-${i.toString().padStart(6, "0")}.txt`,
         store: true,
       });
@@ -224,7 +230,9 @@ describe("ZIP64 Format Tests (Node only)", () => {
     }
   }, 120000); // 2 minute timeout
 
-  it("should create a ZIP64 archive with total size larger than 4GB", async ({ onTestFinished }) => {
+  it("should create a ZIP64 archive with total size larger than 4GB", async ({
+    onTestFinished,
+  }) => {
     const tempDir = tmpdir();
     const zipPath = join(tempDir, `test-zip64-total-${Date.now()}.zip`);
     onTestFinished(() => rm(zipPath, { force: true }));
@@ -241,7 +249,7 @@ describe("ZIP64 Format Tests (Node only)", () => {
 
     // Create entries
     for (let i = 0; i < fileCount; i++) {
-      const entryWriter = zipWriter.entry({
+      const entryWriter = zipWriter.createEntryStream({
         name: `large-file-${i}.bin`,
         store: true,
       });
@@ -267,7 +275,9 @@ describe("ZIP64 Format Tests (Node only)", () => {
     }
   }, 300000); // 5 minute timeout for very large files
 
-  it("should handle compressed ZIP64 files correctly", async ({ onTestFinished }) => {
+  it("should handle compressed ZIP64 files correctly", async ({
+    onTestFinished,
+  }) => {
     const tempDir = tmpdir();
     const zipPath = join(tempDir, `test-zip64-compressed-${Date.now()}.zip`);
     onTestFinished(() => rm(zipPath, { force: true }));
@@ -278,7 +288,7 @@ describe("ZIP64 Format Tests (Node only)", () => {
     const fileSize = 5 * 1024 * 1024 * 1024; // 5GB uncompressed
     const pattern = 0x41; // 'A' character (compresses very well)
 
-    const entryWriter = zipWriter.entry({
+    const entryWriter = zipWriter.createEntryStream({
       name: "compressed-large.bin",
       store: false, // Use deflate compression
     });

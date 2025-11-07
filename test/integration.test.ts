@@ -17,7 +17,10 @@ describe("ZIP Integration Tests", () => {
       const fileBytes = new TextEncoder().encode(fileContent);
 
       // Write entry
-      const entryWriter = zipWriter.entry({ name: fileName, store: true });
+      const entryWriter = zipWriter.createEntryStream({
+        name: fileName,
+        store: true,
+      });
       const writer = entryWriter.writable.getWriter();
       await writer.write(fileBytes);
       await writer.close();
@@ -59,7 +62,7 @@ describe("ZIP Integration Tests", () => {
       const fileBytes = new TextEncoder().encode(fileContent);
 
       // Write entry with deflate (default)
-      const entryWriter = zipWriter.entry({ name: fileName });
+      const entryWriter = zipWriter.createEntryStream({ name: fileName });
       const writer = entryWriter.writable.getWriter();
       await writer.write(fileBytes);
       await writer.close();
@@ -111,7 +114,10 @@ describe("ZIP Integration Tests", () => {
 
       // Write all entries
       for (const file of files) {
-        const entryWriter = zipWriter.entry({ name: file.name, store: true });
+        const entryWriter = zipWriter.createEntryStream({
+          name: file.name,
+          store: true,
+        });
         const writer = entryWriter.writable.getWriter();
         await writer.write(new TextEncoder().encode(file.content));
         await writer.close();
@@ -160,7 +166,10 @@ describe("ZIP Integration Tests", () => {
 
       // Write all entries
       for (const file of files) {
-        const entryWriter = zipWriter.entry({ name: file.name, store: true });
+        const entryWriter = zipWriter.createEntryStream({
+          name: file.name,
+          store: true,
+        });
         const writer = entryWriter.writable.getWriter();
         await writer.write(new TextEncoder().encode(file.content));
         await writer.close();
@@ -201,7 +210,7 @@ describe("ZIP Integration Tests", () => {
       const testDate = new Date("2024-06-15T12:00:00Z");
       const fileName = "dated-file.txt";
 
-      const entryWriter = zipWriter.entry({
+      const entryWriter = zipWriter.createEntryStream({
         name: fileName,
         store: true,
         date: testDate,
@@ -235,7 +244,7 @@ describe("ZIP Integration Tests", () => {
       const fileName = "commented.txt";
       const fileComment = "This is a test comment";
 
-      const entryWriter = zipWriter.entry({
+      const entryWriter = zipWriter.createEntryStream({
         name: fileName,
         store: true,
         comment: fileComment,
@@ -261,7 +270,7 @@ describe("ZIP Integration Tests", () => {
       const fileName = "executable.sh";
       const fileMode = 0o755; // rwxr-xr-x
 
-      const entryWriter = zipWriter.entry({
+      const entryWriter = zipWriter.createEntryStream({
         name: fileName,
         store: true,
         mode: fileMode,
@@ -297,7 +306,10 @@ describe("ZIP Integration Tests", () => {
 
       // Write all entries
       for (const file of files) {
-        const entryWriter = zipWriter.entry({ name: file.name, store: true });
+        const entryWriter = zipWriter.createEntryStream({
+          name: file.name,
+          store: true,
+        });
         const writer = entryWriter.writable.getWriter();
         await writer.write(new TextEncoder().encode(file.content));
         await writer.close();
@@ -336,7 +348,10 @@ describe("ZIP Integration Tests", () => {
       const zipWriter = new ZipWriter();
       const fileName = "empty.txt";
 
-      const entryWriter = zipWriter.entry({ name: fileName, store: true });
+      const entryWriter = zipWriter.createEntryStream({
+        name: fileName,
+        store: true,
+      });
       const writer = entryWriter.writable.getWriter();
       await writer.close(); // Close without writing anything
 
@@ -369,7 +384,10 @@ describe("ZIP Integration Tests", () => {
       // ZIP format supports filenames up to 65535 bytes
       const longName = "a".repeat(200) + "/b".repeat(200) + "/file.txt";
 
-      const entryWriter = zipWriter.entry({ name: longName, store: true });
+      const entryWriter = zipWriter.createEntryStream({
+        name: longName,
+        store: true,
+      });
       const writer = entryWriter.writable.getWriter();
       await writer.write(new TextEncoder().encode("Content"));
       await writer.close();
@@ -400,7 +418,7 @@ describe("ZIP Integration Tests", () => {
 
       // Write all entries
       for (const file of files) {
-        const entryWriter = zipWriter.entry({
+        const entryWriter = zipWriter.createEntryStream({
           name: file.name,
           store: file.store,
         });
@@ -438,6 +456,163 @@ describe("ZIP Integration Tests", () => {
         const expectedHash = await sha256(expectedBytes);
         assert.strictEqual(
           entry.sha256,
+          expectedHash,
+          `Content for ${expectedFile.name} should match`
+        );
+      }
+    });
+  });
+
+  describe("createEntry() convenience method", () => {
+    it("should create entry with data in one call", async () => {
+      const zipWriter = new ZipWriter();
+      const fileName = "convenience.txt";
+      const fileContent = "Hello from createEntry!";
+      const fileBytes = new TextEncoder().encode(fileContent);
+
+      // Write entry using createEntry convenience method
+      const entryInfo = await zipWriter.createEntry(fileBytes, {
+        name: fileName,
+        store: true,
+      });
+
+      // Verify returned entry info
+      assert.strictEqual(entryInfo.name, fileName);
+      assert.strictEqual(entryInfo.uncompressedSize, fileBytes.length);
+
+      // Finalize and collect ZIP
+      await zipWriter.finalize();
+      const zipBuffer = await collectStream(zipWriter.readable);
+
+      // Validate with yauzl
+      const entries = await validateZip(zipBuffer);
+
+      assert.strictEqual(entries.length, 1, "Should have one entry");
+      const entry = entries[0];
+      assert.strictEqual(entry.filename, fileName);
+
+      // Verify content via SHA256
+      const expectedHash = await sha256(fileBytes);
+      assert.strictEqual(entry.sha256, expectedHash, "Content should match");
+    });
+
+    it("should create multiple entries with createEntry", async () => {
+      const zipWriter = new ZipWriter();
+      const files = [
+        { name: "file1.txt", content: "First file" },
+        { name: "file2.txt", content: "Second file" },
+        { name: "file3.txt", content: "Third file" },
+      ];
+
+      // Write all entries using createEntry
+      for (const file of files) {
+        const fileBytes = new TextEncoder().encode(file.content);
+        await zipWriter.createEntry(fileBytes, {
+          name: file.name,
+        });
+      }
+
+      // Finalize and collect ZIP
+      await zipWriter.finalize();
+      const zipBuffer = await collectStream(zipWriter.readable);
+
+      // Validate with yauzl
+      const entries = await validateZip(zipBuffer);
+
+      assert.strictEqual(entries.length, files.length);
+
+      // Verify each file
+      for (let i = 0; i < files.length; i++) {
+        const expectedFile = files[i];
+        const entry = entries[i];
+        const expectedBytes = new TextEncoder().encode(expectedFile.content);
+
+        assert.strictEqual(entry.filename, expectedFile.name);
+
+        const expectedHash = await sha256(expectedBytes);
+        assert.strictEqual(entry.sha256, expectedHash);
+      }
+    });
+
+    it("should support all entry options with createEntry", async () => {
+      const zipWriter = new ZipWriter();
+      const fileName = "configured.txt";
+      const fileContent = "Configured file";
+      const fileBytes = new TextEncoder().encode(fileContent);
+      const testDate = new Date("2024-06-15T12:00:00Z");
+      const testMode = 0o755;
+      const testComment = "Test comment";
+
+      // Write entry with all options
+      const entryInfo = await zipWriter.createEntry(fileBytes, {
+        name: fileName,
+        date: testDate,
+        mode: testMode,
+        comment: testComment,
+        store: true,
+      });
+
+      // Verify returned entry info
+      assert.strictEqual(entryInfo.name, fileName);
+      assert.strictEqual(entryInfo.comment, testComment);
+      assert.strictEqual(entryInfo.mode, testMode);
+
+      // Finalize and collect ZIP
+      await zipWriter.finalize();
+      const zipBuffer = await collectStream(zipWriter.readable);
+
+      // Validate with yauzl
+      const entries = await validateZip(zipBuffer);
+
+      const entry = entries[0];
+      assert.strictEqual(entry.filename, fileName);
+      assert.strictEqual(entry.comment, testComment);
+      assert.equal(entry.lastModTime, getDosTime(testDate));
+      assert.equal(entry.lastModDate, getDosDate(testDate));
+
+      const mode = (entry.externalFileAttributes >> 16) & 0xffff;
+      assert.strictEqual(mode, testMode);
+
+      const expectedHash = await sha256(fileBytes);
+      assert.strictEqual(entry.sha256, expectedHash);
+    });
+
+    it("should create multiple entries in parallel with createEntry", async () => {
+      const zipWriter = new ZipWriter();
+      const files = [
+        { name: "parallel1.txt", content: "First parallel file" },
+        { name: "parallel2.txt", content: "Second parallel file" },
+        { name: "parallel3.txt", content: "Third parallel file" },
+      ];
+
+      // Create all entries in parallel using Promise.all
+      await Promise.all(
+        files.map((file) => {
+          const fileBytes = new TextEncoder().encode(file.content);
+          return zipWriter.createEntry(fileBytes, {
+            name: file.name,
+          });
+        })
+      );
+
+      // Finalize and collect ZIP
+      await zipWriter.finalize();
+      const zipBuffer = await collectStream(zipWriter.readable);
+
+      // Validate with yauzl
+      const entries = await validateZip(zipBuffer);
+
+      assert.strictEqual(entries.length, files.length);
+
+      // Verify each file (entries may be in any order due to parallel creation)
+      for (const expectedFile of files) {
+        const entry = entries.find((e) => e.filename === expectedFile.name);
+        assert.isDefined(entry, `Should find entry for ${expectedFile.name}`);
+
+        const expectedBytes = new TextEncoder().encode(expectedFile.content);
+        const expectedHash = await sha256(expectedBytes);
+        assert.strictEqual(
+          entry!.sha256,
           expectedHash,
           `Content for ${expectedFile.name} should match`
         );

@@ -99,6 +99,34 @@ export class ZipWriter<TIsZip64 extends boolean = false> {
   }
 
   /**
+   * Convenience wrapper around `createEntryStream` to write all data at once.
+   * Use `createEntryStream` for more efficient streaming writes. Calls to
+   * createEntry() will be queued internally and each will resolve once it's
+   * written to the archive.
+   *
+   * @example
+   * ```ts
+   * const data = new TextEncoder().encode("Hello, World!");
+   * const entryInfo = await zipWriter.createEntry(data, { name: "hello.txt" });
+   * console.log(entryInfo);
+   * ```
+   *
+   * @param data Entry data
+   * @param options Entry filename, comment, compression method, etc.
+   * @returns Entry information once the entry has been written.
+   */
+  async createEntry(data: Uint8Array<ArrayBuffer>, options: EntryOptions) {
+    const entryWriter = this.createEntryStream(options);
+    const writer = entryWriter.writable.getWriter();
+    try {
+      await writer.write(data);
+    } finally {
+      await writer.close();
+    }
+    return entryWriter.getEntryInfo();
+  }
+
+  /**
    * Create a new entry in the Zip archive. Use the returned
    * entryWriter.writable to write data to the entry. You can await
    * entryWriter.getEntryInfo() to get the entry info once all data has been written.
@@ -124,7 +152,7 @@ export class ZipWriter<TIsZip64 extends boolean = false> {
    *
    * @param options Entry options
    */
-  entry(options: EntryOptions) {
+  createEntryStream(options: EntryOptions) {
     if (this.#finalized) {
       throw new TypeError("Cannot add entry after finalize() has been called");
     }

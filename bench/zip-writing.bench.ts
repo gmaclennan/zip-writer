@@ -93,7 +93,7 @@ async function benchmarkZipWritable(
     const filePath = join(fixtureDir, fileName);
     const fileContent = createReadStream(filePath);
 
-    const entryWriter = zipWriter.entry({
+    const entryWriter = zipWriter.createEntryStream({
       name: fileName,
       store: false, // Use DEFLATE compression
     });
