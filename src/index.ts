@@ -6,6 +6,7 @@ import {
 } from "./write-central-directory.js";
 import { ZIP64_LIMIT } from "./constants.js";
 import { noop } from "./utils.js";
+import { crc32 as crc32Default } from "#crc32";
 
 const BUFFER_SIZE = 16 * 1024; // 16 KB
 const bufferedQueue = new ByteLengthQueuingStrategy({
@@ -58,7 +59,7 @@ export class ZipWriter<TIsZip64 extends boolean = false> {
       },
     },
     // default buffer on the writable side, we already queue entries
-    undefined,
+    bufferedQueue,
     // Readable buffer, so that temporary delays on writable consumers don't
     // block the zip writing.
     bufferedQueue
@@ -67,6 +68,18 @@ export class ZipWriter<TIsZip64 extends boolean = false> {
   #queued: Promise<unknown> = Promise.resolve();
   #entryCount = 0;
   #finalized = false;
+  #crc32;
+
+  /**
+   * @param crc Optional CRC32 function to use. Defaults to zlib.crc32 on Node and a pure JS implementation in browsers.
+   */
+  constructor({
+    crc32 = crc32Default,
+  }: {
+    crc32?: (data: Uint8Array<ArrayBuffer>, value?: number) => number;
+  } = {}) {
+    this.#crc32 = crc32;
+  }
 
   get readable() {
     return this.#zipStream.readable;
@@ -88,7 +101,7 @@ export class ZipWriter<TIsZip64 extends boolean = false> {
   /**
    * Create a new entry in the Zip archive. Use the returned
    * entryWriter.writable to write data to the entry. You can await
-   * entryWriter.entry() to get the entry info once all data has been written.
+   * entryWriter.getEntryInfo() to get the entry info once all data has been written.
    *
    * @example
    * ```ts
@@ -106,7 +119,7 @@ export class ZipWriter<TIsZip64 extends boolean = false> {
    *   new TextEncoder().encode("Hello, World!")
    * );
    * await writer.close();
-   * console.log(await entryWriter.entry()); // Entry info
+   * console.log(await entryWriter.getEntryInfo()); // Entry info
    * ```
    *
    * @param options Entry options
@@ -139,6 +152,7 @@ export class ZipWriter<TIsZip64 extends boolean = false> {
       const reader = readable.getReader();
       try {
         const entryInfo = await writeZipEntry({
+          crc32: this.#crc32,
           writer,
           reader,
           entryOptions: options,
@@ -170,7 +184,7 @@ export class ZipWriter<TIsZip64 extends boolean = false> {
    *
    * @param entries New entries array
    */
-  setEntries(entries: ReadonlyArray<Readonly<EntryInfo>>) {
+  #setEntries(entries: ReadonlyArray<Readonly<EntryInfo>>) {
     const currentEntriesByOffset = new Map<bigint, EntryInfo>();
     for (const entry of this.#entries) {
       currentEntriesByOffset.set(BigInt(entry.startOffset), entry);
@@ -206,7 +220,24 @@ export class ZipWriter<TIsZip64 extends boolean = false> {
     this.#entries = entries.map((entry) => ({ ...entry }));
   }
 
-  async finalize(): Promise<{
+  /**
+   * Finalize the ZIP archive by writing the central directory and end of
+   * central directory records. You may not add any more entries after calling
+   * this method. This will await any pending entries to finish writing before
+   * finalizing.
+   *
+   * @param options.entries (Advanced) Optionally override the entries to write
+   * in the central directory. This can be used to reorder, remove, or rename
+   * entries before finalizing the archive, however you cannot add invalid
+   * entries, add additional entries, or modify their crc32, offsets or sizes.
+   * Use zipWriter.entries or entryWriter.getEntryInfo() to get the current
+   * entries for sorting or filtering.
+   *
+   * @returns Information about the finalized archive.
+   */
+  async finalize({
+    entries,
+  }: { entries?: ReadonlyArray<Readonly<EntryInfo>> } = {}): Promise<{
     /** Does the archive use ZIP64 format? */
     zip64: boolean;
     /** Total uncompressed size of all entries */
@@ -220,6 +251,9 @@ export class ZipWriter<TIsZip64 extends boolean = false> {
       throw new TypeError("finalize() has already been called");
     }
     this.#finalized = true;
+    if (entries) {
+      this.#setEntries(entries);
+    }
 
     // We do this as an IIFE to avoid an unhandled error, so that a user can
     // call finalize() without needing to await and catch an error. Any error
@@ -292,7 +326,11 @@ export class ZipWriter<TIsZip64 extends boolean = false> {
 }
 
 class EntryWriter {
-  #entryStream = new TransformStream();
+  #entryStream = new TransformStream<Uint8Array<ArrayBuffer>>(
+    undefined,
+    bufferedQueue,
+    bufferedQueue
+  );
   #written: Promise<EntryInfo>;
 
   /**
@@ -330,7 +368,7 @@ class EntryWriter {
   /**
    * Get entry info. Resolves once all data has been written to the Zip stream.
    */
-  async entry(): Promise<EntryInfo> {
+  async getEntryInfo(): Promise<EntryInfo> {
     return this.#written;
   }
 }

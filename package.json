@@ -7,6 +7,12 @@
       "import": "./dist/index.js"
     }
   },
+  "imports": {
+    "#crc32": {
+      "browser": "./src/crc-browser.ts",
+      "default": "./src/crc-node.ts"
+    }
+  },
   "type": "module",
   "scripts": {
     "test": "run-s test:types test:lint test:vitest",
@@ -14,6 +20,7 @@
     "test:types": "tsc --noEmit",
     "test:lint": "eslint .",
     "test:vitest": "vitest",
+    "bench": "vitest bench",
     "format": "prettier --write .",
     "prepack": "rimraf dist && tsc"
   },
@@ -25,12 +32,17 @@
   "license": "ISC",
   "description": "",
   "devDependencies": {
+    "@node-rs/crc32": "^1.10.6",
+    "@types/archiver": "^7.0.0",
     "@types/node": "^24.10.0",
     "@types/yauzl-promise": "^4.0.1",
     "@vitest/browser": "^4.0.7",
     "@vitest/browser-playwright": "^4.0.7",
+    "@zip.js/zip.js": "^2.8.8",
+    "archiver": "^7.0.1",
     "eslint": "^9.39.1",
     "execa": "^9.6.0",
+    "fflate": "^0.8.2",
     "globals": "^16.5.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.2.6",

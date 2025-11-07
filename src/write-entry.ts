@@ -16,7 +16,6 @@ import {
   DATA_DESCRIPTOR_SIZE_ZIP64,
 } from "./constants.js";
 import { getDosTime, getDosDate } from "./utils.js";
-import { crc32 } from "./crc.js";
 
 const textEncoder = new TextEncoder();
 
@@ -28,6 +27,7 @@ export async function writeZipEntry({
   reader,
   entryOptions,
   startOffset,
+  crc32,
 }: {
   /** Writer for the zip archive */
   writer: WritableStreamDefaultWriter<Uint8Array<ArrayBuffer>>;
@@ -37,6 +37,8 @@ export async function writeZipEntry({
   entryOptions: EntryOptions;
   /** Offset in the zip archive where this entry starts */
   startOffset: bigint;
+  /** CRC32 function to use */
+  crc32: (data: Uint8Array<ArrayBuffer>, value?: number) => number;
 }) {
   let uncompressedSize = BigInt(0);
   let compressedSize = BigInt(0);

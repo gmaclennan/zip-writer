@@ -14,7 +14,6 @@ if (process.platform === "darwin") {
 
 export default defineConfig({
   test: {
-    include: ["test/**/*.test.ts"],
     reporters: process.env.CI ? ["verbose"] : ["default"],
     projects: [
       {
@@ -25,11 +24,20 @@ export default defineConfig({
       },
       {
         optimizeDeps: {
-          exclude: ["yauzl-promise", "execa"],
+          exclude: ["yauzl-promise", "execa", "node:zlib", "zlib"],
         },
         test: {
           name: "browser",
-          exclude: ["test/zip64.test.ts", "**/node_modules/**", "**/.git/**"],
+          benchmark: {
+            exclude: ["bench/zip-writing.bench.ts"],
+          },
+          include: ["test/**/*.test.ts"],
+          exclude: [
+            "test/zip64.test.ts",
+            "test/crc.test.ts",
+            "**/node_modules/**",
+            "**/.git/**",
+          ],
           browser: {
             ui: false,
             screenshotFailures: false,

@@ -116,6 +116,34 @@ export function getDosDate(date: Date): number {
   );
 }
 
+export function randomBytesReadableStream({
+  size = Number.POSITIVE_INFINITY,
+} = {}) {
+  let producedSize = 0;
+
+  return new ReadableStream({
+    type: "bytes",
+    pull(controller) {
+      if (controller.byobRequest === null) return;
+
+      let view = controller.byobRequest.view as Uint8Array<ArrayBuffer>;
+      let readSize = view.byteLength;
+
+      if (producedSize + readSize >= size) {
+        readSize = size - producedSize;
+        view = view.subarray(0, readSize);
+        crypto.getRandomValues(view);
+        controller.byobRequest.respondWithNewView(view);
+        controller.close();
+      } else {
+        crypto.getRandomValues(view);
+        controller.byobRequest.respond(readSize);
+      }
+      producedSize += readSize;
+    },
+  });
+}
+
 // if you are using TypeScript, you can augment the module
 declare module "vitest/browser" {
   interface BrowserCommands {
