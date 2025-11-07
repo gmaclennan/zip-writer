@@ -42,7 +42,8 @@ async function validateWithPython(zipFile: string): Promise<void> {
   const scriptPath = join(__dirname, "validate-zip.py");
 
   // Run Python validation
-  await execa("python3", [scriptPath, zipFile], { timeout: 5000 });
+  const pythonCmd = process.platform === "win32" ? "python" : "python3";
+  await execa(pythonCmd, [scriptPath, zipFile], { timeout: 5000 });
 }
 
 /**
