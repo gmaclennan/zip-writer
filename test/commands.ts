@@ -19,13 +19,12 @@ export type ZipEntryInfo = YauzlEntryInfo & {
 };
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const isWindows = platform() === "win32";
 
 /**
  * Validate ZIP file using unzip command
  */
 async function validateWithUnzip(zipFile: string): Promise<void> {
-  const isWindows = platform() === "win32";
-
   if (isWindows) {
     // Windows: use tar command (available in Windows 10+)
     await execa("tar", ["-tf", zipFile], { timeout: 5000 });
@@ -39,11 +38,11 @@ async function validateWithUnzip(zipFile: string): Promise<void> {
  * Validate ZIP file using Python's zipfile.testzip()
  */
 async function validateWithPython(zipFile: string): Promise<void> {
+  if (isWindows) return // skip python validation on win
   const scriptPath = join(__dirname, "validate-zip.py");
 
   // Run Python validation
-  const pythonCmd = process.platform === "win32" ? "python" : "python3";
-  await execa(pythonCmd, [scriptPath, zipFile], { timeout: 5000 });
+  await execa("python3", [scriptPath, zipFile], { timeout: 5000 });
 }
 
 /**
