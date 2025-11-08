@@ -385,4 +385,52 @@ describe("ZIP64 Format Tests (Node only)", () => {
       /File comment exceeds maximum length of 65535 bytes \(got 70000 bytes\)/
     );
   }, 120000); // 2 minute timeout
+
+  it("should handle file mode (Unix permissions) in ZIP64 entries", async ({
+    onTestFinished,
+  }) => {
+    const tempDir = tmpdir();
+    const zipPath = join(tempDir, `test-zip64-mode-${Date.now()}.zip`);
+    onTestFinished(() => rm(zipPath, { force: true }));
+
+    const zipWriter = new ZipWriter();
+
+    // Create a file larger than 4GB to trigger ZIP64
+    const fileSize = 4 * 1024 * 1024 * 1024 + 1024; // 4GB + 1KB
+    const pattern = 0x45;
+    const fileMode = 0o755; // rwxr-xr-x
+
+    const entryWriter = zipWriter.createEntryStream({
+      name: "executable.sh",
+      mode: fileMode,
+      store: true,
+    });
+
+    // Start streaming to file
+    const streamPromise = streamToFile(zipWriter.readable, zipPath);
+
+    // Pipe data
+    const pipePromise = createPatternStream(pattern, fileSize).pipeTo(
+      entryWriter.writable
+    );
+
+    await pipePromise;
+    await zipWriter.finalize();
+    await streamPromise;
+
+    // Verify the file mode was preserved
+    const zipFile = await yauzl.open(zipPath);
+    const entries = [];
+    for await (const entry of zipFile) {
+      entries.push(entry);
+    }
+
+    assert.strictEqual(entries.length, 1);
+    const entry = entries[0];
+    assert.strictEqual(entry.filename, "executable.sh");
+
+    // Extract Unix mode from external file attributes (upper 16 bits)
+    const mode = (entry.externalFileAttributes >> 16) & 0xffff;
+    assert.strictEqual(mode, fileMode, "Unix file mode should be preserved");
+  }, 120000); // 2 minute timeout
 });
