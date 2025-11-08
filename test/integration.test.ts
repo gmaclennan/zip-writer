@@ -776,5 +776,65 @@ describe("ZIP Integration Tests", () => {
         /Cannot set entries: entry at offset .* has different CRC32/
       );
     });
+
+    it("should throw error when finalize entries param has modified uncompressed size", async () => {
+      const zipWriter = new ZipWriter();
+
+      // Add one entry
+      const entryInfo = await zipWriter.createEntry(
+        new TextEncoder().encode("test"),
+        { name: "test.txt", store: true }
+      );
+
+      // Create an entry with modified uncompressed size
+      const modifiedEntry = {
+        ...entryInfo,
+        uncompressedSize: 99999,
+      };
+
+      // Try to finalize with the modified entry
+      let error: Error | null = null;
+      try {
+        await zipWriter.finalize({ entries: [modifiedEntry] });
+      } catch (e) {
+        error = e as Error;
+      }
+
+      assert.ok(error, "Expected an error to be thrown");
+      assert.match(
+        error!.message,
+        /Cannot set entries: entry at offset .* has different uncompressed size/
+      );
+    });
+
+    it("should throw error when finalize entries param has modified compressed size", async () => {
+      const zipWriter = new ZipWriter();
+
+      // Add one entry
+      const entryInfo = await zipWriter.createEntry(
+        new TextEncoder().encode("test"),
+        { name: "test.txt", store: true }
+      );
+
+      // Create an entry with modified compressed size
+      const modifiedEntry = {
+        ...entryInfo,
+        compressedSize: 99999,
+      };
+
+      // Try to finalize with the modified entry
+      let error: Error | null = null;
+      try {
+        await zipWriter.finalize({ entries: [modifiedEntry] });
+      } catch (e) {
+        error = e as Error;
+      }
+
+      assert.ok(error, "Expected an error to be thrown");
+      assert.match(
+        error!.message,
+        /Cannot set entries: entry at offset .* has different compressed size/
+      );
+    });
   });
 });
