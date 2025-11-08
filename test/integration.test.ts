@@ -716,5 +716,35 @@ describe("ZIP Integration Tests", () => {
       assert.ok(error, "Expected an error to be thrown");
       assert.match(error!.message, /finalize\(\) has already been called/);
     });
+
+    it("should throw error when finalize entries param has nonexistent entry", async () => {
+      const zipWriter = new ZipWriter();
+
+      // Add one entry
+      const entryInfo = await zipWriter.createEntry(
+        new TextEncoder().encode("test"),
+        { name: "test.txt", store: true }
+      );
+
+      // Create a fake entry with a wrong offset
+      const fakeEntry = {
+        ...entryInfo,
+        startOffset: 99999,
+      };
+
+      // Try to finalize with the fake entry
+      let error: Error | null = null;
+      try {
+        await zipWriter.finalize({ entries: [fakeEntry] });
+      } catch (e) {
+        error = e as Error;
+      }
+
+      assert.ok(error, "Expected an error to be thrown");
+      assert.match(
+        error!.message,
+        /Cannot set entries: entry at offset 99999 does not exist/
+      );
+    });
   });
 });
