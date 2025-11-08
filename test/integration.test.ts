@@ -746,5 +746,35 @@ describe("ZIP Integration Tests", () => {
         /Cannot set entries: entry at offset 99999 does not exist/
       );
     });
+
+    it("should throw error when finalize entries param has modified CRC32", async () => {
+      const zipWriter = new ZipWriter();
+
+      // Add one entry
+      const entryInfo = await zipWriter.createEntry(
+        new TextEncoder().encode("test"),
+        { name: "test.txt", store: true }
+      );
+
+      // Create an entry with modified CRC32
+      const modifiedEntry = {
+        ...entryInfo,
+        crc32: 12345,
+      };
+
+      // Try to finalize with the modified entry
+      let error: Error | null = null;
+      try {
+        await zipWriter.finalize({ entries: [modifiedEntry] });
+      } catch (e) {
+        error = e as Error;
+      }
+
+      assert.ok(error, "Expected an error to be thrown");
+      assert.match(
+        error!.message,
+        /Cannot set entries: entry at offset .* has different CRC32/
+      );
+    });
   });
 });
