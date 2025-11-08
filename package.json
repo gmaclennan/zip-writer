@@ -46,6 +46,7 @@
     "@types/yauzl-promise": "^4.0.1",
     "@vitest/browser": "^4.0.7",
     "@vitest/browser-playwright": "^4.0.7",
+    "@vitest/coverage-istanbul": "^4.0.7",
     "@zip.js/zip.js": "^2.8.8",
     "archiver": "^7.0.1",
     "eslint": "^9.39.1",

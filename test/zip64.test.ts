@@ -52,6 +52,7 @@ async function validateZipFile(filePath: string) {
     uncompressedSize: number;
     compressedSize: number;
     compressionMethod: number;
+    comment?: string;
   }> = [];
 
   for await (const entry of zipFile) {
@@ -60,6 +61,7 @@ async function validateZipFile(filePath: string) {
       uncompressedSize: entry.uncompressedSize,
       compressedSize: entry.compressedSize,
       compressionMethod: entry.compressionMethod,
+      comment: entry.comment,
     });
   }
 
@@ -133,10 +135,12 @@ describe("ZIP64 Format Tests (Node only)", () => {
     // Create a file larger than 4GB (4GB + 1MB to ensure ZIP64)
     const fileSize = 4 * 1024 * 1024 * 1024 + 1024 * 1024; // 4GB + 1MB
     const pattern = 0x42; // 'B' character
+    const fileComment = new Array(65535).fill("Z").join(""); // Max allowed comment length
 
     // Write a large file using store (no compression) to save time
     const entryWriter = zipWriter.createEntryStream({
       name: "large-file.bin",
+      comment: fileComment,
       store: true,
     });
 
@@ -165,6 +169,11 @@ describe("ZIP64 Format Tests (Node only)", () => {
     assert.strictEqual(entry.uncompressedSize, fileSize);
     assert.strictEqual(entry.compressedSize, fileSize); // STORE = no compression
     assert.strictEqual(entry.compressionMethod, 0); // STORE
+    assert.strictEqual(
+      entry.comment?.length,
+      fileComment.length,
+      "File comment should match"
+    );
   }, 120000); // 2 minute timeout for large file
 
   it("should create a ZIP64 archive with many files (>65535 entries)", async ({
@@ -321,4 +330,59 @@ describe("ZIP64 Format Tests (Node only)", () => {
       "Compressed size should be < 1% of original"
     );
   }, 300000); // 5 minute timeout
+
+  it("should throw error when file comment exceeds 65535 bytes in ZIP64", async ({
+    onTestFinished,
+  }) => {
+    const tempDir = tmpdir();
+    const zipPath = join(tempDir, `test-zip64-error-${Date.now()}.zip`);
+    onTestFinished(() => rm(zipPath, { force: true }));
+
+    const zipWriter = new ZipWriter();
+
+    // Create a file larger than 4GB to trigger ZIP64
+    const fileSize = 4 * 1024 * 1024 * 1024 + 1024 * 1024; // 4GB + 1MB
+    const pattern = 0x42;
+    const fileComment = new Array(70000).fill("Z").join(""); // 70000 bytes (exceeds limit)
+
+    const entryWriter = zipWriter.createEntryStream({
+      name: "large-file.bin",
+      comment: fileComment,
+      store: true,
+    });
+
+    // Start streaming to file
+    const streamPromise = streamToFile(zipWriter.readable, zipPath);
+
+    // Pipe data
+    const pipePromise = createPatternStream(pattern, fileSize).pipeTo(
+      entryWriter.writable
+    );
+
+    await pipePromise;
+
+    // The error should be thrown during finalize when the central directory is written
+    let error: Error | null = null;
+    try {
+      await zipWriter.finalize();
+      await streamPromise;
+    } catch (e) {
+      error = e as Error;
+    }
+
+    // Also catch any errors from the stream promise
+    try {
+      await streamPromise;
+    } catch (e) {
+      if (!error) {
+        error = e as Error;
+      }
+    }
+
+    assert.ok(error, "Expected an error to be thrown");
+    assert.match(
+      error!.message,
+      /File comment exceeds maximum length of 65535 bytes \(got 70000 bytes\)/
+    );
+  }, 120000); // 2 minute timeout
 });

@@ -48,6 +48,12 @@ function getCDFHStandard(
     ? textEncoder.encode(entryInfo.comment)
     : new Uint8Array(0);
 
+  if (commentBytes.length > 0xffff) {
+    throw new Error(
+      `File comment exceeds maximum length of 65535 bytes (got ${commentBytes.length} bytes)`
+    );
+  }
+
   const headerSize =
     CENTRAL_DIRECTORY_HEADER_SIZE + nameBytes.length + commentBytes.length;
   const header = new Uint8Array(headerSize);
@@ -111,6 +117,12 @@ function getCDFHZip64(entryInfo: EntryInfoZip64): Uint8Array<ArrayBuffer> {
   const commentBytes = entryInfo.comment
     ? textEncoder.encode(entryInfo.comment)
     : new Uint8Array(0);
+
+  if (commentBytes.length > 0xffff) {
+    throw new Error(
+      `File comment exceeds maximum length of 65535 bytes (got ${commentBytes.length} bytes)`
+    );
+  }
 
   // Extra field for ZIP64
   const extraField = new Uint8Array(28); // ZIP64 extra field

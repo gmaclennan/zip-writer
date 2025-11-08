@@ -622,4 +622,43 @@ describe("ZIP Integration Tests", () => {
       }
     });
   });
+
+  describe("Error handling", () => {
+    it("should throw error when file comment exceeds 65535 bytes", async () => {
+      const zipWriter = new ZipWriter();
+
+      // Create a comment that exceeds the 65535 byte limit
+      const fileComment = new Array(70000).fill("Z").join(""); // 70000 bytes
+
+      const entryWriter = zipWriter.createEntryStream({
+        name: "test.txt",
+        comment: fileComment,
+        store: true,
+      });
+
+      const writer = entryWriter.writable.getWriter();
+      await writer.write(new TextEncoder().encode("test"));
+      await writer.close();
+
+      // The error should be thrown during finalize when the central directory is written
+      let error: Error | null = null;
+      try {
+        await zipWriter.finalize();
+        // Drain the readable stream
+        const reader = zipWriter.readable.getReader();
+        while (true) {
+          const { done } = await reader.read();
+          if (done) break;
+        }
+      } catch (e) {
+        error = e as Error;
+      }
+
+      assert.ok(error, "Expected an error to be thrown");
+      assert.match(
+        error!.message,
+        /File comment exceeds maximum length of 65535 bytes \(got 70000 bytes\)/
+      );
+    });
+  });
 });

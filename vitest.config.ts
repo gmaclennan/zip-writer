@@ -15,6 +15,9 @@ if (process.platform === "darwin") {
 export default defineConfig({
   test: {
     reporters: process.env.CI ? ["verbose"] : ["default"],
+    coverage: {
+      provider: "istanbul",
+    },
     projects: [
       {
         test: {
