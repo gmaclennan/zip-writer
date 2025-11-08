@@ -660,5 +660,36 @@ describe("ZIP Integration Tests", () => {
         /File comment exceeds maximum length of 65535 bytes \(got 70000 bytes\)/
       );
     });
+
+    it("should throw error when adding entry after finalize()", async () => {
+      const zipWriter = new ZipWriter();
+
+      // Add one entry and finalize
+      const entryWriter = zipWriter.createEntryStream({
+        name: "test.txt",
+        store: true,
+      });
+      const writer = entryWriter.writable.getWriter();
+      await writer.write(new TextEncoder().encode("test"));
+      await writer.close();
+      await zipWriter.finalize();
+
+      // Try to add another entry after finalize
+      let error: Error | null = null;
+      try {
+        zipWriter.createEntryStream({
+          name: "after-finalize.txt",
+          store: true,
+        });
+      } catch (e) {
+        error = e as Error;
+      }
+
+      assert.ok(error, "Expected an error to be thrown");
+      assert.match(
+        error!.message,
+        /Cannot add entry after finalize\(\) has been called/
+      );
+    });
   });
 });
