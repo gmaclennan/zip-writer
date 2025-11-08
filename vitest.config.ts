@@ -20,6 +20,11 @@ export default defineConfig({
         test: {
           name: "node",
           environment: "node",
+          alias: {
+            // vitest follows package.json imports to the compiled file, but we
+            // want it to use the src TS file in testing
+            "#crc32": "/src/crc-node.ts",
+          },
         },
       },
       {
@@ -30,6 +35,11 @@ export default defineConfig({
           name: "browser",
           benchmark: {
             exclude: ["bench/zip-writing.bench.ts"],
+          },
+          alias: {
+            // vitest follows package.json imports to the compiled file, but we
+            // want it to use the src TS file in testing
+            "#crc32": "/src/crc-browser.ts",
           },
           include: ["test/**/*.test.ts"],
           exclude: [
