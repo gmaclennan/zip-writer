@@ -691,5 +691,30 @@ describe("ZIP Integration Tests", () => {
         /Cannot add entry after finalize\(\) has been called/
       );
     });
+
+    it("should throw error when calling finalize() twice", async () => {
+      const zipWriter = new ZipWriter();
+
+      // Add an entry and finalize
+      const entryWriter = zipWriter.createEntryStream({
+        name: "test.txt",
+        store: true,
+      });
+      const writer = entryWriter.writable.getWriter();
+      await writer.write(new TextEncoder().encode("test"));
+      await writer.close();
+      await zipWriter.finalize();
+
+      // Try to finalize again
+      let error: Error | null = null;
+      try {
+        await zipWriter.finalize();
+      } catch (e) {
+        error = e as Error;
+      }
+
+      assert.ok(error, "Expected an error to be thrown");
+      assert.match(error!.message, /finalize\(\) has already been called/);
+    });
   });
 });
