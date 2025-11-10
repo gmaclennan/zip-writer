@@ -56,6 +56,48 @@ console.log(info);
 await zipWriter.finalize();
 ```
 
+## Helper Functions
+
+### `readableFromBytes()`
+
+A helper function for creating a `ReadableStream` from a `Uint8Array` with
+proper backpressure handling. This is useful when you need to convert byte data
+into a stream for use with `addEntry()`. On supported platforms, you can use
+[`ReadableStream.from()`](https://developer.mozilla.org/en-US/docs/Web/API/ReadableStream/from_static)
+instead.
+
+This is not included in the main bundle to keep the size small.
+
+**Import:**
+
+```ts
+import { readableFromBytes } from "zip-writable/readable-from-bytes";
+```
+
+**Parameters:**
+
+- `data: Uint8Array` - The byte array to convert to a stream
+
+**Returns:** `ReadableStream<Uint8Array>` - A readable stream that chunks the
+data with proper backpressure
+
+**Example:**
+
+```ts
+import { ZipWriter } from "zip-writable";
+import { readableFromBytes } from "zip-writable/readable-from-bytes";
+
+const zipWriter = new ZipWriter();
+
+const data = new TextEncoder().encode("Hello, World!");
+await zipWriter.addEntry({
+  readable: readableFromBytes(data),
+  name: "hello.txt",
+});
+
+await zipWriter.finalize();
+```
+
 ## API Reference
 
 ### `ZipWriter`

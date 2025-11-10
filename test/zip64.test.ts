@@ -29,7 +29,7 @@ import { join } from "path";
 import * as yauzl from "yauzl-promise";
 import { Readable } from "stream";
 import { pipeline } from "stream/promises";
-import { readableFrom } from "./utils.js";
+import { readableFromBytes } from "../src/readable-from-bytes.js";
 
 /**
  * Stream a ReadableStream to a file path using Node.js streams
@@ -107,7 +107,9 @@ describe("ZIP64 Format Tests (Node only)", () => {
     zipWriter.addEntry({
       name: "test.txt",
       store: true,
-      readable: readableFrom(new TextEncoder().encode("Hello ZIP64 tests!")),
+      readable: readableFromBytes(
+        new TextEncoder().encode("Hello ZIP64 tests!")
+      ),
     });
 
     // Stream to file
@@ -190,7 +192,7 @@ describe("ZIP64 Format Tests (Node only)", () => {
       zipWriter.addEntry({
         name: `file-${i.toString().padStart(6, "0")}.txt`,
         store: true,
-        readable: readableFrom(fileBytes),
+        readable: readableFromBytes(fileBytes),
       });
     }
 
