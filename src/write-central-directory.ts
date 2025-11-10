@@ -142,39 +142,6 @@ export function getCDFH(entryInfo: EntryInfoInternal): Uint8Array<ArrayBuffer> {
 }
 
 /**
- * Generate the End of Central Directory record with zip64 support.
- */
-export function getEOCDStandard(
-  entriesCount: number,
-  centralDirectoryOffset: number,
-  centralDirectorySize: number
-): Uint8Array<ArrayBuffer> {
-  const eocd = new Uint8Array(EOCD_SIZE);
-  const view = new DataView(eocd.buffer);
-
-  writeDataView(view, [
-    // End of central dir signature
-    [UINT32, END_OF_CENTRAL_DIR_SIGNATURE, BIG_ENDIAN],
-    // Number of this disk
-    [UINT16, 0, LITTLE_ENDIAN],
-    // Disk where central directory starts
-    [UINT16, 0, LITTLE_ENDIAN],
-    // Number of central directory records on this disk
-    [UINT16, entriesCount, LITTLE_ENDIAN],
-    // Total number of central directory records
-    [UINT16, entriesCount, LITTLE_ENDIAN],
-    // Size of central directory
-    [UINT32, centralDirectorySize, LITTLE_ENDIAN],
-    // Offset of start of central directory
-    [UINT32, centralDirectoryOffset, LITTLE_ENDIAN],
-    // ZIP file comment length
-    [UINT16, 0, LITTLE_ENDIAN],
-  ]);
-
-  return eocd;
-}
-
-/**
  * Generate the ZIP64 End of Central Directory record.
  */
 export function getEOCD(options: {
