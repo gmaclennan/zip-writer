@@ -1,3 +1,11 @@
+import { ZIP64_LIMIT } from "./constants.js";
+import type {
+  EntryInfo,
+  EntryInfoInternal,
+  EntryInfoStandard,
+  EntryInfoZip64,
+} from "./index.js";
+
 export function getDosTime(date: Date): number {
   return (
     (date.getHours() << 11) |
@@ -78,4 +86,49 @@ export function writeDataView(
     offset += OFFSETS[method];
   }
   return offset;
+}
+
+export function entryNeedsZip64({
+  uncompressedSize,
+  compressedSize,
+  startOffset,
+}: Pick<
+  EntryInfoInternal,
+  "uncompressedSize" | "compressedSize" | "startOffset"
+>): boolean {
+  return (
+    uncompressedSize >= ZIP64_LIMIT ||
+    compressedSize >= ZIP64_LIMIT ||
+    startOffset >= ZIP64_LIMIT
+  );
+}
+
+export function eocdNeedsZip64(options: {
+  centralDirectoryStart: bigint;
+  centralDirectorySize: bigint;
+  entriesCount: number;
+}): boolean {
+  return (
+    options.centralDirectoryStart >= ZIP64_LIMIT ||
+    options.centralDirectorySize >= ZIP64_LIMIT ||
+    options.entriesCount >= 0xffff
+  );
+}
+
+export function getPublicEntryInfo(entryInfo: EntryInfoInternal): EntryInfo {
+  const { nameBytes, commentBytes, ...rest } = entryInfo;
+  if (rest.zip64) {
+    return {
+      ...rest,
+      zip64: true,
+    } satisfies EntryInfoZip64;
+  } else {
+    return {
+      ...rest,
+      zip64: false,
+      uncompressedSize: Number(rest.uncompressedSize),
+      compressedSize: Number(rest.compressedSize),
+      startOffset: Number(rest.startOffset),
+    } satisfies EntryInfoStandard;
+  }
 }

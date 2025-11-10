@@ -22,7 +22,7 @@
     "test": "run-s test:types test:lint test:vitest",
     "prepare": "husky",
     "test:types": "tsc --noEmit",
-    "test:lint": "eslint .",
+    "test:lint": "eslint",
     "test:vitest": "vitest",
     "bench": "vitest bench",
     "coverage": "vitest run --coverage",

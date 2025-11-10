@@ -1,15 +1,12 @@
+import { getDataDescriptor, getLocalFileHeader } from "./write-entry.js";
+import { getCDFH, getEOCD } from "./write-central-directory.js";
 import {
-  getDataDescriptorStandard,
-  getDataDescriptorZip64,
-  getLocalFileHeader,
-} from "./write-entry.js";
-import {
-  getCDFH,
-  getEOCDZip64,
-  getEOCDStandard,
-} from "./write-central-directory.js";
-import { ZIP64_LIMIT } from "./constants.js";
-import { noop, validateEntryOptions } from "./utils.js";
+  entryNeedsZip64,
+  eocdNeedsZip64,
+  getPublicEntryInfo,
+  noop,
+  validateEntryOptions,
+} from "./utils.js";
 import { crc32 as crc32Default } from "#crc32";
 import Mutex from "p-mutex";
 
@@ -43,7 +40,7 @@ export interface Entry extends EntryOptions {
   readable: ReadableStream<ArrayBufferView<ArrayBufferLike>>;
 }
 
-export interface EntryInfoZip64 extends EntryOptionsInternal {
+export interface EntryInfoInternal extends EntryOptionsInternal {
   /** Byte offset of the local file header within the ZIP archive */
   startOffset: bigint;
   /** CRC32 checksum of the uncompressed data */
@@ -53,7 +50,7 @@ export interface EntryInfoZip64 extends EntryOptionsInternal {
   /** Compressed size in bytes */
   compressedSize: bigint;
   /** Entry information is in ZIP64 format */
-  zip64: true;
+  zip64: boolean;
 }
 
 export interface ZipInfo {
@@ -67,6 +64,13 @@ export interface ZipInfo {
   fileSize: bigint;
 }
 
+export type EntryInfoZip64 = Omit<
+  EntryInfoInternal,
+  "nameBytes" | "commentBytes" | "zip64"
+> & {
+  zip64: true;
+};
+
 export type EntryInfoStandard = {
   [K in keyof EntryInfoZip64]: EntryInfoZip64[K] extends bigint
     ? number
@@ -75,14 +79,7 @@ export type EntryInfoStandard = {
       : EntryInfoZip64[K];
 };
 
-export type EntryInfoInternal = EntryInfoZip64 | EntryInfoStandard;
-
-type OmitUnion<T, U extends keyof T> = T extends U ? never : Omit<T, U>;
-
-export type EntryInfo = OmitUnion<
-  EntryInfoInternal,
-  "nameBytes" | "commentBytes"
->;
+export type EntryInfo = EntryInfoZip64 | EntryInfoStandard;
 
 const textEncoder = new TextEncoder();
 
@@ -101,7 +98,7 @@ export class ZipWriter {
     // block the zip writing.
     bufferedQueue
   );
-  #entries: EntryInfoInternal[] = [];
+  #entries: Readonly<EntryInfoInternal>[] = [];
   #crc32;
   #mutex = new Mutex();
   #finalized = false;
@@ -126,10 +123,7 @@ export class ZipWriter {
    */
   entries(): Promise<EntryInfo[]> {
     return this.#mutex.withLock(() =>
-      this.#entries.map((entry) => {
-        const { nameBytes, commentBytes, ...publicEntryInfo } = entry;
-        return publicEntryInfo;
-      })
+      this.#entries.map((entry) => getPublicEntryInfo(entry))
     );
   }
 
@@ -224,35 +218,23 @@ export class ZipWriter {
       // Await here to ensure all data has been written, so we know this.#offset is accurate
       await writer.ready;
       const compressedSize = this.#offset - fileStartOffset;
-      const needsZip64 =
-        uncompressedSize > ZIP64_LIMIT ||
-        compressedSize > ZIP64_LIMIT ||
-        startOffset > ZIP64_LIMIT;
-      let entryInfo: EntryInfoInternal;
+      const needsZip64 = entryNeedsZip64({
+        uncompressedSize,
+        compressedSize,
+        startOffset,
+      });
+      const entryInfo: EntryInfoInternal = {
+        ...entryOptionsInternal,
+        startOffset,
+        crc32: checksum,
+        uncompressedSize,
+        compressedSize,
+        zip64: needsZip64,
+      };
       try {
         // This is in a try...catch because writing the data descriptor could fail,
         // and we want to abort the output zip readable stream if that happens.
-        if (needsZip64) {
-          entryInfo = {
-            ...entryOptionsInternal,
-            startOffset,
-            crc32: checksum,
-            uncompressedSize,
-            compressedSize,
-            zip64: true,
-          };
-          await writer.write(getDataDescriptorZip64(entryInfo));
-        } else {
-          entryInfo = {
-            ...entryOptionsInternal,
-            startOffset: Number(startOffset),
-            crc32: checksum,
-            uncompressedSize: Number(uncompressedSize),
-            compressedSize: Number(compressedSize),
-            zip64: false,
-          };
-          await writer.write(getDataDescriptorStandard(entryInfo));
-        }
+        await writer.write(getDataDescriptor(entryInfo));
       } catch (err) {
         /* istanbul ignore next -- @preserve */
         await writer.abort(err);
@@ -264,9 +246,7 @@ export class ZipWriter {
       }
       writer.releaseLock();
       this.#entries.push(entryInfo);
-      // Clone to avoid mutation affecting our internal state
-      const { nameBytes, commentBytes, ...publicEntryInfo } = entryInfo;
-      return publicEntryInfo;
+      return getPublicEntryInfo(entryInfo);
     });
     // Avoid an uncaught rejection if the user doesn't await entryInfoPromise
     // - error handling can be done on the readable stream
@@ -280,10 +260,13 @@ export class ZipWriter {
    *
    * @param entries New entries array
    */
-  #setEntries(entries: ReadonlyArray<Readonly<EntryInfo>>) {
-    const currentEntriesByOffset = new Map<bigint, EntryInfo>();
+  #setEntries(entries: EntryInfo[]) {
+    const currentEntriesByOffset = new Map<
+      bigint,
+      Readonly<EntryInfoInternal>
+    >();
     for (const entry of this.#entries) {
-      currentEntriesByOffset.set(BigInt(entry.startOffset), entry);
+      currentEntriesByOffset.set(entry.startOffset, entry);
     }
     // Entries can't have their offset, crc32, compressed size, or uncompressed
     // size changed, but they can be removed, reordered, or have the name and
@@ -302,19 +285,23 @@ export class ZipWriter {
           `Cannot set entries: entry at offset ${entry.startOffset} has different CRC32`
         );
       }
-      if (existingEntry.uncompressedSize !== entry.uncompressedSize) {
+      if (existingEntry.uncompressedSize !== BigInt(entry.uncompressedSize)) {
         throw new Error(
           `Cannot set entries: entry at offset ${entry.startOffset} has different uncompressed size`
         );
       }
-      if (existingEntry.compressedSize !== entry.compressedSize) {
+      if (existingEntry.compressedSize !== BigInt(entry.compressedSize)) {
         throw new Error(
           `Cannot set entries: entry at offset ${entry.startOffset} has different compressed size`
         );
       }
     }
+    // TODO: edge-case a user could pass an entry with an invalid zip64 flag
     this.#entries = entries.map((entry) => ({
       ...entry,
+      uncompressedSize: BigInt(entry.uncompressedSize),
+      compressedSize: BigInt(entry.compressedSize),
+      startOffset: BigInt(entry.startOffset),
       nameBytes: textEncoder.encode(entry.name),
       commentBytes: entry.comment
         ? textEncoder.encode(entry.comment)
@@ -374,33 +361,18 @@ export class ZipWriter {
 
         await writer.ready;
         const centralDirectorySize = this.#offset - centralDirectoryStart;
-
-        // Determine if the archive needs ZIP64 based on entries or central directory
-        const eocdNeedsZip64 =
-          this.#entries.length > 0xffff ||
-          centralDirectoryStart > ZIP64_LIMIT ||
-          centralDirectorySize > ZIP64_LIMIT;
-
-        let eocd: Uint8Array<ArrayBuffer>;
-        if (eocdNeedsZip64) {
-          eocd = getEOCDZip64(
-            BigInt(this.#entries.length),
-            centralDirectoryStart,
-            centralDirectorySize
-          );
-        } else {
-          eocd = getEOCDStandard(
-            this.#entries.length,
-            Number(centralDirectoryStart),
-            Number(centralDirectorySize)
-          );
-        }
+        const eocdOptions = {
+          centralDirectoryStart,
+          centralDirectorySize,
+          entriesCount: this.#entries.length,
+        };
+        const eocd = getEOCD(eocdOptions);
 
         await writer.write(eocd);
         await writer.close();
 
         return {
-          zip64: eocdNeedsZip64 || entryUsesZip64,
+          zip64: eocdNeedsZip64(eocdOptions) || entryUsesZip64,
           uncompressedEntriesSize,
           compressedEntriesSize,
           fileSize: this.#offset,

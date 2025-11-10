@@ -19,6 +19,7 @@ import {
   UINT16,
   UINT32,
   UINT64,
+  entryNeedsZip64,
 } from "./utils.js";
 
 export function getLocalFileHeader(
@@ -61,35 +62,16 @@ export function getLocalFileHeader(
   return header;
 }
 
-export function getDataDescriptorStandard(entryInfo: {
-  uncompressedSize: number;
-  compressedSize: number;
-  crc32: number;
-}): Uint8Array<ArrayBuffer> {
-  const descriptor = new Uint8Array(DATA_DESCRIPTOR_SIZE);
-  const view = new DataView(descriptor.buffer);
-
-  writeDataView(view, [
-    // Data descriptor signature
-    [UINT32, DATA_DESCRIPTOR_SIGNATURE, BIG_ENDIAN],
-    // CRC-32 (4 bytes)
-    [UINT32, entryInfo.crc32, LITTLE_ENDIAN],
-    // Compressed size (4 bytes)
-    [UINT32, entryInfo.compressedSize, LITTLE_ENDIAN],
-    // Uncompressed size (4 bytes)
-    [UINT32, entryInfo.uncompressedSize, LITTLE_ENDIAN],
-  ]);
-
-  return descriptor;
-}
-
-export function getDataDescriptorZip64(entryInfo: {
+export function getDataDescriptor(entryInfo: {
   uncompressedSize: bigint;
   compressedSize: bigint;
+  startOffset: bigint;
   crc32: number;
 }): Uint8Array<ArrayBuffer> {
   const descriptor = new Uint8Array(DATA_DESCRIPTOR_SIZE_ZIP64);
   const view = new DataView(descriptor.buffer);
+
+  const needsZip64 = entryNeedsZip64(entryInfo);
 
   writeDataView(view, [
     // Data descriptor signature
@@ -97,9 +79,13 @@ export function getDataDescriptorZip64(entryInfo: {
     // CRC-32 (4 bytes)
     [UINT32, entryInfo.crc32, LITTLE_ENDIAN],
     // Compressed size (8 bytes)
-    [UINT64, entryInfo.compressedSize, LITTLE_ENDIAN],
+    needsZip64
+      ? [UINT64, entryInfo.compressedSize, LITTLE_ENDIAN]
+      : [UINT32, Number(entryInfo.compressedSize), LITTLE_ENDIAN],
     // Uncompressed size (8 bytes)
-    [UINT64, entryInfo.uncompressedSize, LITTLE_ENDIAN],
+    needsZip64
+      ? [UINT64, entryInfo.uncompressedSize, LITTLE_ENDIAN]
+      : [UINT32, Number(entryInfo.uncompressedSize), LITTLE_ENDIAN],
   ]);
 
   return descriptor;
