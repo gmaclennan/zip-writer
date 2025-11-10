@@ -2,6 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/zip-writer.svg)](https://www.npmjs.com/package/zip-writer)
 [![GitHub CI](https://github.com/gmaclennan/zip-writer/actions/workflows/test.yml/badge.svg)](https://github.com/gmaclennan/zip-writer/actions/workflows/test.yml)
+[![codecov](https://codecov.io/github/gmaclennan/zip-writer/graph/badge.svg?token=SYS1Y4HIMD)](https://codecov.io/github/gmaclennan/zip-writer)
 [![bundle size](https://deno.bundlejs.com/badge?q=zip-writer&treeshake=[*])](https://bundlejs.com/?q=zip-writer&treeshake=%5B*%5D)
 
 A modern streaming ZIP archive writer for JavaScript that uses the
