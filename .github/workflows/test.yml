@@ -59,7 +59,10 @@ jobs:
         run: npx playwright install --with-deps webkit
 
       - name: Run tests
-        run: npm test -- --coverage
+        run: |
+          npm run test:types
+          npm run test:lint
+          npm run test:vitest -- --coverage
 
       - name: Coveralls
         uses: coverallsapp/github-action@v2
