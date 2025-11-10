@@ -86,7 +86,7 @@ export type EntryInfo = OmitUnion<
 
 const textEncoder = new TextEncoder();
 
-export class ZipWriter<TIsZip64 extends boolean = false> {
+export class ZipWriter {
   #offset = BigInt(0);
   #zipStream = new TransformStream(
     {
