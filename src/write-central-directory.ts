@@ -1,9 +1,4 @@
-import type {
-  EntryInfo,
-  EntryInfoInternal,
-  EntryInfoStandard,
-  EntryInfoZip64,
-} from "./index.js";
+import type { EntryInfoInternal } from "./types.js";
 import {
   CENTRAL_DIRECTORY_SIGNATURE,
   END_OF_CENTRAL_DIR_SIGNATURE,
