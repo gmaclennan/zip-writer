@@ -20,7 +20,7 @@
  * by the integration tests. This keeps the tests fast despite the large file sizes.
  */
 
-import { describe, it, assert } from "vitest";
+import { describe, it, assert, expect } from "vitest";
 import { ZipWriter } from "../src/index.js";
 import { rm } from "fs/promises";
 import { createWriteStream } from "fs";
@@ -29,6 +29,7 @@ import { join } from "path";
 import * as yauzl from "yauzl-promise";
 import { Readable } from "stream";
 import { pipeline } from "stream/promises";
+import { readableFrom } from "./utils.js";
 
 /**
  * Stream a ReadableStream to a file path using Node.js streams
@@ -103,14 +104,11 @@ describe("ZIP64 Format Tests (Node only)", () => {
     const zipWriter = new ZipWriter();
 
     // Create a small file first to test the streaming mechanism
-    const entryWriter = zipWriter.createEntryStream({
+    zipWriter.addEntry({
       name: "test.txt",
       store: true,
+      readable: readableFrom(new TextEncoder().encode("Hello ZIP64 tests!")),
     });
-
-    const writer = entryWriter.writable.getWriter();
-    await writer.write(new TextEncoder().encode("Hello ZIP64 tests!"));
-    await writer.close();
 
     // Stream to file
     const streamPromise = streamToFile(zipWriter.readable, zipPath);
@@ -138,26 +136,19 @@ describe("ZIP64 Format Tests (Node only)", () => {
     const fileComment = new Array(65535).fill("Z").join(""); // Max allowed comment length
 
     // Write a large file using store (no compression) to save time
-    const entryWriter = zipWriter.createEntryStream({
+    zipWriter.addEntry({
       name: "large-file.bin",
       comment: fileComment,
       store: true,
+      readable: createPatternStream(pattern, fileSize),
     });
 
     // Start streaming the ZIP to a file - MUST start before writing data
     // to avoid blocking on the 16KB buffer in the readable stream
     const streamPromise = streamToFile(zipWriter.readable, zipPath);
 
-    // Pipe pattern stream to entry (don't await - let it run in parallel)
-    const pipePromise = createPatternStream(pattern, fileSize).pipeTo(
-      entryWriter.writable
-    );
-
-    // Wait for entry to complete
-    await pipePromise;
-
     // Finalize and wait for stream to finish
-    await zipWriter.finalize();
+    zipWriter.finalize();
     await streamPromise;
 
     // Verify the ZIP file metadata
@@ -196,30 +187,15 @@ describe("ZIP64 Format Tests (Node only)", () => {
     // Create entries
     const entryPromises: Promise<void>[] = [];
     for (let i = 0; i < fileCount; i++) {
-      const entryWriter = zipWriter.createEntryStream({
+      zipWriter.addEntry({
         name: `file-${i.toString().padStart(6, "0")}.txt`,
         store: true,
+        readable: readableFrom(fileBytes),
       });
-
-      const promise = (async () => {
-        const writer = entryWriter.writable.getWriter();
-        await writer.write(fileBytes);
-        await writer.close();
-      })();
-
-      entryPromises.push(promise);
-
-      // Process in batches to avoid overwhelming memory
-      if (i % 1000 === 0 && i > 0) {
-        await Promise.all(entryPromises.splice(0));
-      }
     }
 
-    // Wait for remaining entries
-    await Promise.all(entryPromises);
-
     // Finalize and wait for stream
-    await zipWriter.finalize();
+    zipWriter.finalize();
     await streamPromise;
 
     // Verify the ZIP file has correct entry count and metadata
@@ -258,16 +234,15 @@ describe("ZIP64 Format Tests (Node only)", () => {
 
     // Create entries
     for (let i = 0; i < fileCount; i++) {
-      const entryWriter = zipWriter.createEntryStream({
+      zipWriter.addEntry({
         name: `large-file-${i}.bin`,
         store: true,
+        readable: createPatternStream(pattern, fileSize),
       });
-
-      await createPatternStream(pattern, fileSize).pipeTo(entryWriter.writable);
     }
 
     // Finalize and wait for stream
-    await zipWriter.finalize();
+    zipWriter.finalize();
     await streamPromise;
 
     // Verify the ZIP file metadata
@@ -297,21 +272,16 @@ describe("ZIP64 Format Tests (Node only)", () => {
     const fileSize = 5 * 1024 * 1024 * 1024; // 5GB uncompressed
     const pattern = 0x41; // 'A' character (compresses very well)
 
-    const entryWriter = zipWriter.createEntryStream({
+    zipWriter.addEntry({
       name: "compressed-large.bin",
       store: false, // Use deflate compression
+      readable: createPatternStream(pattern, fileSize),
     });
 
     // Start streaming to file BEFORE writing data
     const streamPromise = streamToFile(zipWriter.readable, zipPath);
 
-    // Pipe pattern stream to entry
-    const pipePromise = createPatternStream(pattern, fileSize).pipeTo(
-      entryWriter.writable
-    );
-
-    await pipePromise;
-    await zipWriter.finalize();
+    zipWriter.finalize();
     await streamPromise;
 
     // Verify metadata
@@ -345,43 +315,14 @@ describe("ZIP64 Format Tests (Node only)", () => {
     const pattern = 0x42;
     const fileComment = new Array(70000).fill("Z").join(""); // 70000 bytes (exceeds limit)
 
-    const entryWriter = zipWriter.createEntryStream({
-      name: "large-file.bin",
-      comment: fileComment,
-      store: true,
-    });
-
-    // Start streaming to file
-    const streamPromise = streamToFile(zipWriter.readable, zipPath);
-
-    // Pipe data
-    const pipePromise = createPatternStream(pattern, fileSize).pipeTo(
-      entryWriter.writable
-    );
-
-    await pipePromise;
-
-    // The error should be thrown during finalize when the central directory is written
-    let error: Error | null = null;
-    try {
-      await zipWriter.finalize();
-      await streamPromise;
-    } catch (e) {
-      error = e as Error;
-    }
-
-    // Also catch any errors from the stream promise
-    try {
-      await streamPromise;
-    } catch (e) {
-      if (!error) {
-        error = e as Error;
-      }
-    }
-
-    assert.ok(error, "Expected an error to be thrown");
-    assert.match(
-      error!.message,
+    assert.throws(
+      () =>
+        zipWriter.addEntry({
+          name: "large-file.bin",
+          comment: fileComment,
+          store: true,
+          readable: createPatternStream(pattern, fileSize),
+        }),
       /File comment exceeds maximum length of 65535 bytes \(got 70000 bytes\)/
     );
   }, 120000); // 2 minute timeout
@@ -400,23 +341,15 @@ describe("ZIP64 Format Tests (Node only)", () => {
     const pattern = 0x45;
     const fileMode = 0o755; // rwxr-xr-x
 
-    const entryWriter = zipWriter.createEntryStream({
+    zipWriter.addEntry({
       name: "executable.sh",
       mode: fileMode,
       store: true,
+      readable: createPatternStream(pattern, fileSize),
     });
 
-    // Start streaming to file
-    const streamPromise = streamToFile(zipWriter.readable, zipPath);
-
-    // Pipe data
-    const pipePromise = createPatternStream(pattern, fileSize).pipeTo(
-      entryWriter.writable
-    );
-
-    await pipePromise;
-    await zipWriter.finalize();
-    await streamPromise;
+    zipWriter.finalize();
+    await streamToFile(zipWriter.readable, zipPath);
 
     // Verify the file mode was preserved
     const zipFile = await yauzl.open(zipPath);

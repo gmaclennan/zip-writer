@@ -116,30 +116,75 @@ export function getDosDate(date: Date): number {
   );
 }
 
-export function randomBytesReadableStream({
-  size = Number.POSITIVE_INFINITY,
-} = {}) {
-  let producedSize = 0;
+export function readableFrom(data: Uint8Array) {
+  let offset = 0;
+  return new ReadableStream(
+    {
+      pull(controller) {
+        if (offset >= data.length) {
+          controller.close();
+          return;
+        }
+        if (controller.desiredSize === null) {
+          controller.close();
+          return;
+        }
+        const chunkSize = Math.min(
+          controller.desiredSize,
+          data.length - offset
+        );
+        const chunk = data.subarray(offset, offset + chunkSize);
+        controller.enqueue(chunk);
+        offset += chunkSize;
+      },
+    },
+    new ByteLengthQueuingStrategy({ highWaterMark: 16 * 1024 })
+  );
+}
 
+export function createSink(): WritableStream<Uint8Array> {
+  return new WritableStream<Uint8Array>({
+    write(chunk) {
+      // No-op sink
+    },
+  });
+}
+
+/**
+ * Create a ReadableStream of random data that errors after producing a certain
+ * number of bytes.
+ * @param error The error to throw.
+ * @param options.afterBytes Number of bytes to produce before throwing the error.
+ */
+export function errorReadableStream(error: Error, { afterBytes = 0 } = {}) {
+  let bytesProduced = 0;
   return new ReadableStream({
-    type: "bytes",
-    pull(controller) {
-      if (controller.byobRequest === null) return;
-
-      let view = controller.byobRequest.view as Uint8Array<ArrayBuffer>;
-      let readSize = view.byteLength;
-
-      if (producedSize + readSize >= size) {
-        readSize = size - producedSize;
-        view = view.subarray(0, readSize);
-        crypto.getRandomValues(view);
-        controller.byobRequest.respondWithNewView(view);
-        controller.close();
-      } else {
-        crypto.getRandomValues(view);
-        controller.byobRequest.respond(readSize);
+    start(controller) {
+      if (afterBytes === 0) {
+        controller.error(error);
       }
-      producedSize += readSize;
+    },
+    pull(controller) {
+      if (bytesProduced >= afterBytes) {
+        controller.error(error);
+        return;
+      }
+      const data = new Uint8Array(controller.desiredSize || 0xff);
+      crypto.getRandomValues(data);
+      bytesProduced += controller.desiredSize || 0xff;
+      controller.enqueue(data);
+    },
+  });
+}
+
+export function errorWritableStream(error: Error, { afterBytes = 0 } = {}) {
+  let bytesWritten = 0;
+  return new WritableStream<Uint8Array>({
+    write(chunk) {
+      if (bytesWritten >= afterBytes) {
+        return Promise.reject(error);
+      }
+      bytesWritten += chunk.byteLength;
     },
   });
 }

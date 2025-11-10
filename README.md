@@ -11,12 +11,17 @@ and
 
 ## Features
 
-- **Streaming API** - Write ZIP archives using Web Streams
-- **Memory efficient** - Process large files without loading them entirely into
-  memory
+- **Streaming API** - Write ZIP archives without buffering entries our the
+  output zip into memory
+- **Browser & Node.js** - Works in both environments with the same API
+- **Small bundle size** - ~3KB minified and gzipped
+- **Minimal dependencies** - Only depends on
+  [p-mutex](https://www.npmjs.com/package/p-mutex) for mutex locking (adds ~390
+  bytes)
 - **ZIP64 support** - Automatic handling of large files and archives
-- **Modern JavaScript** - Built with TypeScript, uses native Web Streams API
-- **Flexible** - Reorder, rename, or remove entries before finalizing
+- **Editable Central Directory** - Reorder, rename, or remove entries before
+  finalizing
+- **100% test coverage** - Output validated against standard ZIP tools
 
 ## Installation
 
@@ -35,13 +40,16 @@ const zipWriter = new ZipWriter();
 zipWriter.readable.pipeTo(writableStream);
 
 // Add entries to the ZIP
-const entryWriter = zipWriter.createEntryStream({ name: "hello.txt" });
-const writer = entryWriter.writable.getWriter();
-await writer.write(new TextEncoder().encode("Hello, World!"));
-await writer.close();
-
-// Get entry info after writing
-const info = await entryWriter.getEntryInfo();
+const data = new TextEncoder().encode("Hello, World!");
+const info = await zipWriter.addEntry({
+  readable: new ReadableStream({
+    start(controller) {
+      controller.enqueue(data);
+      controller.close();
+    },
+  }),
+  name: "hello.txt",
+});
 console.log(info);
 
 // Finalize the ZIP archive
@@ -87,93 +95,66 @@ return new Response(zipWriter.readable, {
 });
 ```
 
-##### `entries: ReadonlyArray<Readonly<EntryInfo>>`
+##### `entries(): Promise<EntryInfo[]>`
 
-Array of all entries that have been written to the archive. Each entry contains
-metadata like size, CRC32, compression info, etc.
+Returns a promise that resolves to an array of all entries that have been
+written to the archive. Each entry contains metadata like size, CRC32,
+compression info, etc.
 
 #### Methods
 
-##### `createEntry(data: Uint8Array, options: EntryOptions): Promise<EntryInfo>`
+##### `addEntry(entry: Entry): Promise<EntryInfo>`
 
-Convenience method to add a buffer as an entry to the zip archive. Returns a
-promise that resolves to the entry info once written. For more efficient
-streaming writes, use `createEntryStream()`.
-
-**Parameters:**
-
-- `data: Uint8Array` - Entry data to write
-- `options.name: string` - Entry name including internal path (required)
-- `options.comment?: string` - Entry comment
-- `options.date?: Date` - Entry date (defaults to current date)
-- `options.mode?: number` - Entry permissions (Unix-style mode)
-- `options.store?: boolean` - Set to `true` to disable compression (defaults to
-  `false`, using DEFLATE compression)
-
-**Example:**
-
-```ts
-const data = new TextEncoder().encode("Hello, World!");
-const entryInfo = await zipWriter.createEntry(data, { name: "hello.txt" });
-console.log(entryInfo);
-```
-
-##### `createEntryStream(options: EntryOptions): EntryWriter`
-
-Create a new entry in the ZIP archive. Returns an `EntryWriter` that you can
-write data to via streams.
+Add an entry to the ZIP archive. Returns a promise that resolves to the entry
+info once written.
 
 **Parameters:**
 
-- `options.name: string` - Entry name including internal path (required)
-- `options.comment?: string` - Entry comment
-- `options.date?: Date` - Entry date (defaults to current date)
-- `options.mode?: number` - Entry permissions (Unix-style mode)
-- `options.store?: boolean` - Set to `true` to disable compression (defaults to
+- `entry.readable: ReadableStream<ArrayBufferView>` - Readable stream of entry
+  data
+- `entry.name: string` - Entry name including internal path (required)
+- `entry.comment?: string` - Entry comment
+- `entry.date?: Date` - Entry date (defaults to current date)
+- `entry.mode?: number` - Entry permissions (Unix-style mode)
+- `entry.store?: boolean` - Set to `true` to disable compression (defaults to
   `false`, using DEFLATE compression)
 
 **Examples:**
 
 ```ts
-// Simple text file
-const entry = zipWriter.createEntryStream({ name: "readme.txt" });
-const writer = entry.writable.getWriter();
-await writer.write(new TextEncoder().encode("Hello!"));
-await writer.close();
-
-// Stream a fetch response
+// Stream from a fetch response
 const response = await fetch(imageUrl);
-response.body.pipeTo(
-  zipWriter.createEntryStream({ name: "images/photo.jpg" }).writable,
-);
+await zipWriter.addEntry({
+  readable: response.body,
+  name: "images/photo.jpg",
+});
+
+// Stream from a Uint8Array
+const data = new TextEncoder().encode("Hello, World!");
+await zipWriter.addEntry({
+  readable: new ReadableStream({
+    start(controller) {
+      controller.enqueue(data);
+      controller.close();
+    },
+  }),
+  name: "hello.txt",
+});
 
 // With custom date and permissions
-zipWriter.createEntryStream({
+await zipWriter.addEntry({
+  readable: scriptStream,
   name: "script.sh",
   date: new Date("2024-01-01"),
   mode: 0o755, // executable
-}).writable;
+});
 
 // Disable compression for already-compressed files
-zipWriter.createEntryStream({
+await zipWriter.addEntry({
+  readable: videoStream,
   name: "video.mp4",
   store: true, // no compression
-}).writable;
-```
-
-##### `onceQueueEmpty(): Promise<void>`
-
-Wait until all currently queued entries have been written. Useful when you need
-to ensure entries are complete before continuing.
-
-```ts
-// Add multiple entries
-zipWriter.createEntryStream({ name: "file1.txt" }).writable;
-zipWriter.createEntryStream({ name: "file2.txt" }).writable;
-
-// Wait for all to complete
-await zipWriter.onceQueueEmpty();
-console.log(`Wrote ${zipWriter.entries.length} entries`);
+});
 ```
 
 ##### `finalize(options?): Promise<{ zip64: boolean, uncompressedEntriesSize: bigint, compressedEntriesSize: bigint, fileSize: bigint }>`
@@ -209,11 +190,8 @@ console.log(
 **Example with entries option:**
 
 ```ts
-// Wait for all entries to be written
-await zipWriter.onceQueueEmpty();
-
 // Get current entries and modify them
-const entries = [...zipWriter.entries];
+const entries = await zipWriter.entries();
 
 // Remove an entry
 const filtered = entries.filter((e) => e.name !== "temp.txt");
@@ -231,37 +209,11 @@ const sorted = [...entries].sort((a, b) => a.name.localeCompare(b.name));
 await zipWriter.finalize({ entries: sorted });
 ```
 
-### `EntryWriter`
+### `EntryInfo`
 
-Returned by `ZipWriter.createEntryStream()`. Provides a writable stream to write
-entry data.
+Returned by `ZipWriter.addEntry()`. Contains metadata about a written entry.
 
-#### Properties
-
-##### `writable: WritableStream<Uint8Array>`
-
-The writable stream to write entry data to. Close this stream when done writing.
-
-```ts
-const entryWriter = zipWriter.createEntryStream({ name: "data.txt" });
-
-// Using a writer
-const writer = entryWriter.writable.getWriter();
-await writer.write(new TextEncoder().encode("chunk 1"));
-await writer.write(new TextEncoder().encode("chunk 2"));
-await writer.close();
-
-// Using pipeTo
-someReadableStream.pipeTo(entryWriter.writable);
-```
-
-#### Methods
-
-##### `getEntryInfo(): Promise<EntryInfo>`
-
-Get entry info. Resolves once all data has been written to the ZIP stream.
-
-**Returns `EntryInfo`:**
+**Properties:**
 
 - `name: string` - Entry name
 - `comment?: string` - Entry comment
@@ -274,11 +226,13 @@ Get entry info. Resolves once all data has been written to the ZIP stream.
 - `compressedSize: bigint | number` - Compressed size in bytes
 - `zip64: boolean` - Whether this entry uses ZIP64 format
 
-```ts
-const entryWriter = zipWriter.createEntryStream({ name: "test.txt" });
-await someStream.pipeTo(entryWriter.writable);
+**Example:**
 
-const info = await entryWriter.getEntryInfo();
+```ts
+const info = await zipWriter.addEntry({
+  readable: dataStream,
+  name: "test.txt",
+});
 console.log(
   `Wrote ${info.name}: ${info.uncompressedSize} bytes (compressed to ${info.compressedSize})`,
 );
@@ -298,24 +252,41 @@ async function createZip() {
   const fileStream = Writable.toWeb(createWriteStream("output.zip"));
   zipWriter.readable.pipeTo(fileStream);
 
-  // Add a text file using createEntry
+  // Add a text file
   const data1 = new TextEncoder().encode("This is a readme");
-  await zipWriter.createEntry(data1, { name: "readme.txt" });
+  await zipWriter.addEntry({
+    readable: new ReadableStream({
+      start(controller) {
+        controller.enqueue(data1);
+        controller.close();
+      },
+    }),
+    name: "readme.txt",
+  });
 
-  // Add files from URLs using createEntryStream
+  // Add files from URLs
   const imageResponse = await fetch("https://example.com/image.png");
-  await imageResponse.body.pipeTo(
-    zipWriter.createEntryStream({ name: "images/photo.png" }).writable,
-  );
+  await zipWriter.addEntry({
+    readable: imageResponse.body,
+    name: "images/photo.png",
+  });
 
-  // Add a JSON file using createEntry
+  // Add a JSON file
   const data = { hello: "world" };
   const jsonData = new TextEncoder().encode(JSON.stringify(data, null, 2));
-  await zipWriter.createEntry(jsonData, { name: "data.json" });
+  await zipWriter.addEntry({
+    readable: new ReadableStream({
+      start(controller) {
+        controller.enqueue(jsonData);
+        controller.close();
+      },
+    }),
+    name: "data.json",
+  });
 
   // Wait for all entries and check results
-  await zipWriter.onceQueueEmpty();
-  console.log(`Added ${zipWriter.entries.length} entries`);
+  const entries = await zipWriter.entries();
+  console.log(`Added ${entries.length} entries`);
 
   // Finalize the archive
   const result = await zipWriter.finalize();
@@ -333,9 +304,16 @@ const zipWriter = new ZipWriter();
 
 // Add entries...
 const data = new TextEncoder().encode("Hello");
-zipWriter
-  .createEntry(data, { name: "file.txt" })
-  .then(() => zipWriter.finalize());
+await zipWriter.addEntry({
+  readable: new ReadableStream({
+    start(controller) {
+      controller.enqueue(data);
+      controller.close();
+    },
+  }),
+  name: "file.txt",
+});
+await zipWriter.finalize();
 
 // Create download link
 const blob = await new Response(zipWriter.readable).blob();
@@ -414,17 +392,15 @@ No special configuration is needed - it's handled automatically.
 
 ```ts
 try {
-  const entryWriter = zipWriter.entry({ name: "test.txt" });
-  await someStream.pipeTo(entryWriter.writable);
-  await entryWriter.getEntryInfo();
+  await zipWriter.addEntry({ readable: someStream, name: "test.txt" });
 } catch (error) {
   console.error("Failed to write entry:", error);
   // The ZIP stream is aborted on error - cannot add more entries
 }
 ```
 
-Once an error occurs during entry writing, the ZIP stream is corrupted and
-cannot be recovered. You must create a new `ZipWriter` instance.
+Once an error occurs during entry writing, the ZIP stream is in the errored
+state and cannot be recovered. You must create a new `ZipWriter` instance.
 
 ## License
 

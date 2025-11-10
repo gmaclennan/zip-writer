@@ -1,4 +1,9 @@
-import type { EntryInfo, EntryInfoStandard, EntryInfoZip64 } from "./index.js";
+import type {
+  EntryInfo,
+  EntryInfoInternal,
+  EntryInfoStandard,
+  EntryInfoZip64,
+} from "./index.js";
 import {
   CENTRAL_DIRECTORY_SIGNATURE,
   END_OF_CENTRAL_DIR_SIGNATURE,
@@ -25,6 +30,7 @@ import {
   UINT16,
   UINT32,
   UINT64,
+  validateEntryOptions,
 } from "./utils.js";
 
 const textEncoder = new TextEncoder();
@@ -32,7 +38,7 @@ const textEncoder = new TextEncoder();
 /**
  * Generate the Central Directory File Header for the given entry info.
  */
-export function getCDFH(entryInfo: EntryInfo): Uint8Array<ArrayBuffer> {
+export function getCDFH(entryInfo: EntryInfoInternal): Uint8Array<ArrayBuffer> {
   if (entryInfo.zip64) {
     return getCDFHZip64(entryInfo);
   } else {
@@ -43,16 +49,8 @@ export function getCDFH(entryInfo: EntryInfo): Uint8Array<ArrayBuffer> {
 function getCDFHStandard(
   entryInfo: EntryInfoStandard
 ): Uint8Array<ArrayBuffer> {
-  const nameBytes = textEncoder.encode(entryInfo.name);
-  const commentBytes = entryInfo.comment
-    ? textEncoder.encode(entryInfo.comment)
-    : new Uint8Array(0);
-
-  if (commentBytes.length > 0xffff) {
-    throw new Error(
-      `File comment exceeds maximum length of 65535 bytes (got ${commentBytes.length} bytes)`
-    );
-  }
+  const { nameBytes, commentBytes } = entryInfo;
+  validateEntryOptions(entryInfo);
 
   const headerSize =
     CENTRAL_DIRECTORY_HEADER_SIZE + nameBytes.length + commentBytes.length;
@@ -113,16 +111,8 @@ function getCDFHStandard(
 }
 
 function getCDFHZip64(entryInfo: EntryInfoZip64): Uint8Array<ArrayBuffer> {
-  const nameBytes = textEncoder.encode(entryInfo.name);
-  const commentBytes = entryInfo.comment
-    ? textEncoder.encode(entryInfo.comment)
-    : new Uint8Array(0);
-
-  if (commentBytes.length > 0xffff) {
-    throw new Error(
-      `File comment exceeds maximum length of 65535 bytes (got ${commentBytes.length} bytes)`
-    );
-  }
+  const { nameBytes, commentBytes } = entryInfo;
+  validateEntryOptions(entryInfo);
 
   // Extra field for ZIP64
   const extraField = new Uint8Array(28); // ZIP64 extra field

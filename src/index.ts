@@ -1,12 +1,17 @@
-import { writeZipEntry } from "./write-entry.js";
+import {
+  getDataDescriptorStandard,
+  getDataDescriptorZip64,
+  getLocalFileHeader,
+} from "./write-entry.js";
 import {
   getCDFH,
   getEOCDZip64,
   getEOCDStandard,
 } from "./write-central-directory.js";
 import { ZIP64_LIMIT } from "./constants.js";
-import { noop } from "./utils.js";
+import { noop, validateEntryOptions } from "./utils.js";
 import { crc32 as crc32Default } from "#crc32";
+import Mutex from "p-mutex";
 
 const BUFFER_SIZE = 16 * 1024; // 16 KB
 const bufferedQueue = new ByteLengthQueuingStrategy({
@@ -26,7 +31,19 @@ export interface EntryOptions {
   store?: boolean;
 }
 
-export interface EntryInfoZip64 extends EntryOptions {
+export interface EntryOptionsInternal extends EntryOptions {
+  /** Encoded entry name */
+  nameBytes: Uint8Array;
+  /** Encoded entry comment */
+  commentBytes: Uint8Array;
+}
+
+export interface Entry extends EntryOptions {
+  /** Readable stream of entry data */
+  readable: ReadableStream<ArrayBufferView<ArrayBufferLike>>;
+}
+
+export interface EntryInfoZip64 extends EntryOptionsInternal {
   /** Byte offset of the local file header within the ZIP archive */
   startOffset: bigint;
   /** CRC32 checksum of the uncompressed data */
@@ -39,6 +56,17 @@ export interface EntryInfoZip64 extends EntryOptions {
   zip64: true;
 }
 
+export interface ZipInfo {
+  /** Does the archive use ZIP64 format? */
+  zip64: boolean;
+  /** Total uncompressed size of all entries */
+  uncompressedEntriesSize: bigint;
+  /** Total compressed size of all entries */
+  compressedEntriesSize: bigint;
+  /** Total size of the ZIP file */
+  fileSize: bigint;
+}
+
 export type EntryInfoStandard = {
   [K in keyof EntryInfoZip64]: EntryInfoZip64[K] extends bigint
     ? number
@@ -47,7 +75,16 @@ export type EntryInfoStandard = {
       : EntryInfoZip64[K];
 };
 
-export type EntryInfo = EntryInfoZip64 | EntryInfoStandard;
+export type EntryInfoInternal = EntryInfoZip64 | EntryInfoStandard;
+
+type OmitUnion<T, U extends keyof T> = T extends U ? never : Omit<T, U>;
+
+export type EntryInfo = OmitUnion<
+  EntryInfoInternal,
+  "nameBytes" | "commentBytes"
+>;
+
+const textEncoder = new TextEncoder();
 
 export class ZipWriter<TIsZip64 extends boolean = false> {
   #offset = BigInt(0);
@@ -64,11 +101,10 @@ export class ZipWriter<TIsZip64 extends boolean = false> {
     // block the zip writing.
     bufferedQueue
   );
-  #entries: EntryInfo[] = [];
-  #queued: Promise<unknown> = Promise.resolve();
-  #entryCount = 0;
-  #finalized = false;
+  #entries: EntryInfoInternal[] = [];
   #crc32;
+  #mutex = new Mutex();
+  #finalized = false;
 
   /**
    * @param crc Optional CRC32 function to use. Defaults to zlib.crc32 on Node and a pure JS implementation in browsers.
@@ -85,45 +121,16 @@ export class ZipWriter<TIsZip64 extends boolean = false> {
     return this.#zipStream.readable;
   }
 
-  get entries(): ReadonlyArray<Readonly<EntryInfo>> {
-    return this.#entries;
-  }
-
   /**
-   * Wait until all currently queued entries have been written.
+   * Get an array of entry information for all entries added so far to the ZIP archive.
    */
-  async onceQueueEmpty(): Promise<void> {
-    while (this.#entries.length < this.#entryCount) {
-      await this.#queued;
-    }
-  }
-
-  /**
-   * Convenience wrapper around `createEntryStream` to write all data at once.
-   * Use `createEntryStream` for more efficient streaming writes. Calls to
-   * createEntry() will be queued internally and each will resolve once it's
-   * written to the archive.
-   *
-   * @example
-   * ```ts
-   * const data = new TextEncoder().encode("Hello, World!");
-   * const entryInfo = await zipWriter.createEntry(data, { name: "hello.txt" });
-   * console.log(entryInfo);
-   * ```
-   *
-   * @param data Entry data
-   * @param options Entry filename, comment, compression method, etc.
-   * @returns Entry information once the entry has been written.
-   */
-  async createEntry(data: Uint8Array<ArrayBuffer>, options: EntryOptions) {
-    const entryWriter = this.createEntryStream(options);
-    const writer = entryWriter.writable.getWriter();
-    try {
-      await writer.write(data);
-    } finally {
-      await writer.close();
-    }
-    return entryWriter.getEntryInfo();
+  entries(): Promise<EntryInfo[]> {
+    return this.#mutex.withLock(() =>
+      this.#entries.map((entry) => {
+        const { nameBytes, commentBytes, ...publicEntryInfo } = entry;
+        return publicEntryInfo;
+      })
+    );
   }
 
   /**
@@ -152,58 +159,119 @@ export class ZipWriter<TIsZip64 extends boolean = false> {
    *
    * @param options Entry options
    */
-  createEntryStream(options: EntryOptions) {
+  addEntry({ readable, ...entryOptions }: Entry): Promise<EntryInfo> {
     if (this.#finalized) {
       throw new TypeError("Cannot add entry after finalize() has been called");
     }
-    this.#entryCount++;
-
-    // Capture the previous queue position
-    const prevQueued = this.#queued;
-
-    // Create a promise that will be resolved when this entry completes
-    let entryDone: () => void;
-    let entryError: (reason: unknown) => void;
-    this.#queued = new Promise<void>((resolve, reject) => {
-      entryDone = resolve;
-      entryError = reject;
-    });
-    // prevent unhandled rejection, but we still want this.#queued to reject
-    // when awaited if there's an error
-    this.#queued.catch(noop);
-
-    return new EntryWriter(async (readable) => {
-      // Wait for previous entry to complete
-      await prevQueued;
-
-      const writer = this.#zipStream.writable.getWriter();
-      const reader = readable.getReader();
+    // Encode now to catch range errors synchronously
+    const entryOptionsInternal: EntryOptionsInternal = {
+      ...entryOptions,
+      nameBytes: textEncoder.encode(entryOptions.name),
+      commentBytes: entryOptions.comment
+        ? textEncoder.encode(entryOptions.comment)
+        : new Uint8Array(),
+    };
+    validateEntryOptions(entryOptionsInternal);
+    const entryInfoPromise = this.#mutex.withLock(async () => {
+      // -- Write local file header --
+      let writer = this.#zipStream.writable.getWriter();
+      await writer.ready;
+      const startOffset = this.#offset;
       try {
-        const entryInfo = await writeZipEntry({
-          crc32: this.#crc32,
-          writer,
-          reader,
-          entryOptions: options,
-          startOffset: this.#offset,
-        });
-        this.#entries.push(entryInfo);
-        entryDone();
-        return entryInfo;
+        // This is in a try...catch because if writing the local file header
+        // fails, we want to abort the output zip readable stream.
+        await writer.write(getLocalFileHeader(entryOptionsInternal));
+        // Await all data has been written before we releaseLock and read the offset
+        await writer.ready;
       } catch (err) {
-        entryError(err);
-        await reader.cancel(err);
-        // Abort the zip stream - it's corrupted after a partial entry write
-        this.#zipStream.writable.abort(err);
-        // Don't call entryDone() - leave subsequent entries waiting forever
-        // since the zip stream is corrupted
-        // This error is handled in the EntryWriter constructor, and used to
-        // abort the entry writable stream
-        throw err;
-      } finally {
-        reader.releaseLock();
+        // Let the readable size know we are no longer consuming data
+        /* istanbul ignore next -- @preserve */
+        readable.cancel(err);
+        // Put the zip stream writable into an error state, which will propogate
+        // to the readable side and anything consuming it
+        /* istanbul ignore next -- @preserve */
+        await writer.abort(err);
+        /* istanbul ignore next -- @preserve */
         writer.releaseLock();
+        /* istanbul ignore next -- @preserve */
+        throw err;
       }
+
+      writer.releaseLock();
+      const fileStartOffset = this.#offset;
+
+      // -- Write file data --
+      let uncompressedSize = BigInt(0);
+      let checksum = 0;
+      const crcAndSizeStream = new TransformStream({
+        transform: async (chunk, controller) => {
+          const byteLength = BigInt(chunk.byteLength);
+          uncompressedSize += byteLength;
+          checksum = this.#crc32(chunk, checksum);
+          controller.enqueue(chunk);
+        },
+      });
+      const compressionStream = entryOptions.store
+        ? new TransformStream()
+        : new CompressionStream("deflate-raw");
+      await readable
+        .pipeThrough(crcAndSizeStream)
+        .pipeThrough(compressionStream)
+        .pipeTo(this.#zipStream.writable, { preventClose: true });
+
+      // -- Write data descriptor --
+      writer = this.#zipStream.writable.getWriter();
+      // Await here to ensure all data has been written, so we know this.#offset is accurate
+      await writer.ready;
+      const compressedSize = this.#offset - fileStartOffset;
+      const needsZip64 =
+        uncompressedSize > ZIP64_LIMIT ||
+        compressedSize > ZIP64_LIMIT ||
+        startOffset > ZIP64_LIMIT;
+      let entryInfo: EntryInfoInternal;
+      try {
+        // This is in a try...catch because writing the data descriptor could fail,
+        // and we want to abort the output zip readable stream if that happens.
+        if (needsZip64) {
+          entryInfo = {
+            ...entryOptionsInternal,
+            startOffset,
+            crc32: checksum,
+            uncompressedSize,
+            compressedSize,
+            zip64: true,
+          };
+          await writer.write(getDataDescriptorZip64(entryInfo));
+        } else {
+          entryInfo = {
+            ...entryOptionsInternal,
+            startOffset: Number(startOffset),
+            crc32: checksum,
+            uncompressedSize: Number(uncompressedSize),
+            compressedSize: Number(compressedSize),
+            zip64: false,
+          };
+          await writer.write(getDataDescriptorStandard(entryInfo));
+        }
+      } catch (err) {
+        /* istanbul ignore next -- @preserve */
+        await writer.abort(err);
+        /* istanbul ignore next -- @preserve */
+        writer.releaseLock();
+        // The readable has already been fully consumed at this point, so no need to cancel it
+        /* istanbul ignore next -- @preserve */
+        throw err;
+      }
+      writer.releaseLock();
+      this.#entries.push(entryInfo);
+      // Clone to avoid mutation affecting our internal state
+      const { nameBytes, commentBytes, ...publicEntryInfo } = entryInfo;
+      return publicEntryInfo;
     });
+    // Avoid an uncaught rejection if the user doesn't await entryInfoPromise
+    // - error handling can be done on the readable stream
+    entryInfoPromise.catch(noop);
+    return entryInfoPromise;
   }
 
   /**
@@ -245,7 +313,13 @@ export class ZipWriter<TIsZip64 extends boolean = false> {
         );
       }
     }
-    this.#entries = entries.map((entry) => ({ ...entry }));
+    this.#entries = entries.map((entry) => ({
+      ...entry,
+      nameBytes: textEncoder.encode(entry.name),
+      commentBytes: entry.comment
+        ? textEncoder.encode(entry.comment)
+        : new Uint8Array(0),
+    }));
   }
 
   /**
@@ -263,36 +337,26 @@ export class ZipWriter<TIsZip64 extends boolean = false> {
    *
    * @returns Information about the finalized archive.
    */
-  async finalize({
-    entries,
-  }: { entries?: ReadonlyArray<Readonly<EntryInfo>> } = {}): Promise<{
-    /** Does the archive use ZIP64 format? */
-    zip64: boolean;
-    /** Total uncompressed size of all entries */
-    uncompressedEntriesSize: bigint;
-    /** Total compressed size of all entries */
-    compressedEntriesSize: bigint;
-    /** Total size of the ZIP file */
-    fileSize: bigint;
-  }> {
+  finalize({ entries }: { entries?: EntryInfo[] } = {}): Promise<ZipInfo> {
     if (this.#finalized) {
       throw new TypeError("finalize() has already been called");
     }
     this.#finalized = true;
-    if (entries) {
-      this.#setEntries(entries);
-    }
-
-    // We do this as an IIFE to avoid an unhandled error, so that a user can
-    // call finalize() without needing to await and catch an error. Any error
-    // will be propagated to the stream output, but the user can optionally
-    // await finalize() to also see the error.
-    const finalizePromise = (async () => {
-      await this.onceQueueEmpty();
-
+    const zipInfoPromise = this.#mutex.withLock(async () => {
+      if (entries) {
+        try {
+          this.#setEntries(entries);
+        } catch (err) {
+          // If setting entries fails, we still want to finalize the zip stream
+          // so that consumers don't hang waiting for data that will never come.
+          this.#zipStream.writable.abort(err);
+          throw err;
+        }
+      }
       // Write central directory headers for all entries
-      const centralDirectoryStart = this.#offset;
       const writer = this.#zipStream.writable.getWriter();
+      await writer.ready;
+      const centralDirectoryStart = this.#offset;
 
       try {
         let entryUsesZip64 = false;
@@ -304,9 +368,11 @@ export class ZipWriter<TIsZip64 extends boolean = false> {
           }
           uncompressedEntriesSize += BigInt(entry.uncompressedSize);
           compressedEntriesSize += BigInt(entry.compressedSize);
+          await writer.ready;
           await writer.write(getCDFH(entry));
         }
 
+        await writer.ready;
         const centralDirectorySize = this.#offset - centralDirectoryStart;
 
         // Determine if the archive needs ZIP64 based on entries or central directory
@@ -331,8 +397,6 @@ export class ZipWriter<TIsZip64 extends boolean = false> {
         }
 
         await writer.write(eocd);
-
-        // Close the zip stream
         await writer.close();
 
         return {
@@ -347,56 +411,10 @@ export class ZipWriter<TIsZip64 extends boolean = false> {
       } finally {
         writer.releaseLock();
       }
-    })();
-    finalizePromise.catch(noop); // prevent unhandled rejection
-    return finalizePromise;
-  }
-}
-
-class EntryWriter {
-  #entryStream = new TransformStream<Uint8Array<ArrayBuffer>>(
-    undefined,
-    bufferedQueue,
-    bufferedQueue
-  );
-  #written: Promise<EntryInfo>;
-
-  /**
-   * @param enqueueAndPipe Function that enqueues the entry data readable, pipes it to the Zip stream, and returns a promise that resolves to the entry info once done.
-   */
-  constructor(
-    enqueueAndPipe: (
-      readable: ReadableStream<Uint8Array<ArrayBuffer>>
-    ) => Promise<EntryInfo>
-  ) {
-    // We could try to pass the zipstream writable to EntryWriter, but then
-    // EntryWriter would not know when the entry has finished writing, and would
-    // not have a way to get the entry info.
-    this.#written = enqueueAndPipe(this.#entryStream.readable);
-    // abort the writable quickly if there is an error, and ensure we don't
-    // throw an uncaught error.
-    this.#written.catch((reason) => {
-      this.#entryStream.writable.abort(reason);
     });
-  }
-
-  /**
-   * Writable stream to write entry data to.
-   *
-   * @example
-   * ```ts
-   * ReadableStream.from([new TextEncoder().encode("Hello, World!")])
-   *   .pipeTo(entryWriter.writable);
-   * ```
-   */
-  get writable() {
-    return this.#entryStream.writable;
-  }
-
-  /**
-   * Get entry info. Resolves once all data has been written to the Zip stream.
-   */
-  async getEntryInfo(): Promise<EntryInfo> {
-    return this.#written;
+    // Avoid an uncaught rejection if the user doesn't await finalize() - error
+    // handling can be done on the readable stream
+    zipInfoPromise.catch(noop);
+    return zipInfoPromise;
   }
 }

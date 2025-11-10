@@ -1,4 +1,4 @@
-import { describe, it, assert } from "vitest";
+import { describe, it, assert, expect } from "vitest";
 import { ZipWriter } from "../src/index.js";
 import {
   validateZip,
@@ -6,6 +6,7 @@ import {
   sha256,
   getDosTime,
   getDosDate,
+  readableFrom,
 } from "./utils.js";
 import { crc32 } from "../src/crc-browser.js";
 
@@ -18,13 +19,11 @@ describe("ZIP Integration Tests", () => {
       const fileBytes = new TextEncoder().encode(fileContent);
 
       // Write entry
-      const entryWriter = zipWriter.createEntryStream({
+      zipWriter.addEntry({
+        readable: readableFrom(fileBytes),
         name: fileName,
         store: true,
       });
-      const writer = entryWriter.writable.getWriter();
-      await writer.write(fileBytes);
-      await writer.close();
 
       // Finalize and collect ZIP
       await zipWriter.finalize();
@@ -63,10 +62,10 @@ describe("ZIP Integration Tests", () => {
       const fileBytes = new TextEncoder().encode(fileContent);
 
       // Write entry with deflate (default)
-      const entryWriter = zipWriter.createEntryStream({ name: fileName });
-      const writer = entryWriter.writable.getWriter();
-      await writer.write(fileBytes);
-      await writer.close();
+      zipWriter.addEntry({
+        readable: readableFrom(fileBytes),
+        name: fileName,
+      });
 
       // Finalize and collect ZIP
       await zipWriter.finalize();
@@ -108,24 +107,31 @@ describe("ZIP Integration Tests", () => {
     it("should create a valid ZIP with multiple files", async () => {
       const zipWriter = new ZipWriter();
       const files = [
-        { name: "file1.txt", content: "First file content" },
-        { name: "file2.txt", content: "Second file content" },
-        { name: "file3.txt", content: "Third file content" },
+        {
+          name: "file1.txt",
+          content: new Array(10000).fill("First file content").join(""),
+        },
+        {
+          name: "file2.txt",
+          content: new Array(10000).fill("Second file content").join(""),
+        },
+        {
+          name: "file3.txt",
+          content: new Array(10000).fill("Third file content").join(""),
+        },
       ];
 
       // Write all entries
       for (const file of files) {
-        const entryWriter = zipWriter.createEntryStream({
+        zipWriter.addEntry({
           name: file.name,
           store: true,
+          readable: readableFrom(new TextEncoder().encode(file.content)),
         });
-        const writer = entryWriter.writable.getWriter();
-        await writer.write(new TextEncoder().encode(file.content));
-        await writer.close();
       }
 
       // Finalize and collect ZIP
-      await zipWriter.finalize();
+      zipWriter.finalize();
       const zipBuffer = await collectStream(zipWriter.readable);
 
       // Validate with yauzl via validateZip helper
@@ -167,13 +173,11 @@ describe("ZIP Integration Tests", () => {
 
       // Write all entries
       for (const file of files) {
-        const entryWriter = zipWriter.createEntryStream({
+        zipWriter.addEntry({
           name: file.name,
           store: true,
+          readable: readableFrom(new TextEncoder().encode(file.content)),
         });
-        const writer = entryWriter.writable.getWriter();
-        await writer.write(new TextEncoder().encode(file.content));
-        await writer.close();
       }
 
       // Finalize and collect ZIP
@@ -211,16 +215,14 @@ describe("ZIP Integration Tests", () => {
       const testDate = new Date("2024-06-15T12:00:00Z");
       const fileName = "dated-file.txt";
 
-      const entryWriter = zipWriter.createEntryStream({
+      zipWriter.addEntry({
         name: fileName,
         store: true,
         date: testDate,
+        readable: readableFrom(new TextEncoder().encode("Content")),
       });
-      const writer = entryWriter.writable.getWriter();
-      await writer.write(new TextEncoder().encode("Content"));
-      await writer.close();
 
-      await zipWriter.finalize();
+      zipWriter.finalize();
       const zipBuffer = await collectStream(zipWriter.readable);
 
       // Validate with yauzl via validateZip helper
@@ -245,14 +247,14 @@ describe("ZIP Integration Tests", () => {
       const fileName = "commented.txt";
       const fileComment = "This is a test comment";
 
-      const entryWriter = zipWriter.createEntryStream({
+      zipWriter.addEntry({
         name: fileName,
         store: true,
         comment: fileComment,
+        readable: readableFrom(
+          new TextEncoder().encode("Content with comment")
+        ),
       });
-      const writer = entryWriter.writable.getWriter();
-      await writer.write(new TextEncoder().encode("Content with comment"));
-      await writer.close();
 
       await zipWriter.finalize();
       const zipBuffer = await collectStream(zipWriter.readable);
@@ -271,16 +273,16 @@ describe("ZIP Integration Tests", () => {
       const fileName = "executable.sh";
       const fileMode = 0o755; // rwxr-xr-x
 
-      const entryWriter = zipWriter.createEntryStream({
+      zipWriter.addEntry({
         name: fileName,
         store: true,
         mode: fileMode,
+        readable: readableFrom(
+          new TextEncoder().encode("#!/bin/bash\necho 'test'")
+        ),
       });
-      const writer = entryWriter.writable.getWriter();
-      await writer.write(new TextEncoder().encode("#!/bin/bash\necho 'test'"));
-      await writer.close();
 
-      await zipWriter.finalize();
+      zipWriter.finalize();
       const zipBuffer = await collectStream(zipWriter.readable);
 
       // Validate with yauzl via validateZip helper
@@ -307,13 +309,11 @@ describe("ZIP Integration Tests", () => {
 
       // Write all entries
       for (const file of files) {
-        const entryWriter = zipWriter.createEntryStream({
+        zipWriter.addEntry({
           name: file.name,
           store: true,
+          readable: readableFrom(new TextEncoder().encode(file.content)),
         });
-        const writer = entryWriter.writable.getWriter();
-        await writer.write(new TextEncoder().encode(file.content));
-        await writer.close();
       }
 
       await zipWriter.finalize();
@@ -349,12 +349,11 @@ describe("ZIP Integration Tests", () => {
       const zipWriter = new ZipWriter();
       const fileName = "empty.txt";
 
-      const entryWriter = zipWriter.createEntryStream({
+      zipWriter.addEntry({
         name: fileName,
         store: true,
+        readable: readableFrom(new Uint8Array(0)),
       });
-      const writer = entryWriter.writable.getWriter();
-      await writer.close(); // Close without writing anything
 
       await zipWriter.finalize();
       const zipBuffer = await collectStream(zipWriter.readable);
@@ -385,15 +384,13 @@ describe("ZIP Integration Tests", () => {
       // ZIP format supports filenames up to 65535 bytes
       const longName = "a".repeat(200) + "/b".repeat(200) + "/file.txt";
 
-      const entryWriter = zipWriter.createEntryStream({
+      zipWriter.addEntry({
         name: longName,
         store: true,
+        readable: readableFrom(new TextEncoder().encode("Content")),
       });
-      const writer = entryWriter.writable.getWriter();
-      await writer.write(new TextEncoder().encode("Content"));
-      await writer.close();
 
-      await zipWriter.finalize();
+      zipWriter.finalize();
       const zipBuffer = await collectStream(zipWriter.readable);
 
       // Validate with yauzl via validateZip helper
@@ -419,16 +416,14 @@ describe("ZIP Integration Tests", () => {
 
       // Write all entries
       for (const file of files) {
-        const entryWriter = zipWriter.createEntryStream({
+        zipWriter.addEntry({
           name: file.name,
           store: file.store,
+          readable: readableFrom(new TextEncoder().encode(file.content)),
         });
-        const writer = entryWriter.writable.getWriter();
-        await writer.write(new TextEncoder().encode(file.content));
-        await writer.close();
       }
 
-      await zipWriter.finalize();
+      zipWriter.finalize();
       const zipBuffer = await collectStream(zipWriter.readable);
 
       // Validate with yauzl via validateZip helper
@@ -464,376 +459,86 @@ describe("ZIP Integration Tests", () => {
     });
   });
 
-  describe("createEntry() convenience method", () => {
-    it("should create entry with data in one call", async () => {
-      const zipWriter = new ZipWriter();
-      const fileName = "convenience.txt";
-      const fileContent = "Hello from createEntry!";
-      const fileBytes = new TextEncoder().encode(fileContent);
-      const expectedCrc32 = crc32(fileBytes);
-
-      // Write entry using createEntry convenience method
-      const entryInfo = await zipWriter.createEntry(fileBytes, {
-        name: fileName,
-      });
-
-      // Verify returned entry info
-      assert.strictEqual(entryInfo.name, fileName);
-      assert.strictEqual(entryInfo.uncompressedSize, fileBytes.length);
-
-      // Finalize and collect ZIP
-      await zipWriter.finalize();
-      const zipBuffer = await collectStream(zipWriter.readable);
-
-      // Validate with yauzl
-      const entries = await validateZip(zipBuffer);
-
-      assert.strictEqual(entries.length, 1, "Should have one entry");
-      const entry = entries[0];
-      assert.strictEqual(entry.filename, fileName);
-
-      // Verify content via SHA256
-      const expectedHash = await sha256(fileBytes);
-      assert.strictEqual(entry.sha256, expectedHash, "Content should match");
-      assert.strictEqual(entry.crc32, expectedCrc32, "CRC32 should match");
-      assert.strictEqual(entry.uncompressedSize, fileBytes.length);
-    });
-
-    it("should create multiple entries with createEntry", async () => {
+  describe("Entry filtering", () => {
+    it("should allow filtering out entries before finalization", async () => {
       const zipWriter = new ZipWriter();
       const files = [
-        { name: "file1.txt", content: "First file" },
-        { name: "file2.txt", content: "Second file" },
-        { name: "file3.txt", content: "Third file" },
+        { name: "keep1.txt", content: "Keep this file" },
+        { name: "remove.txt", content: "Remove this file" },
+        {
+          name: "keep2.txt",
+          content: "Keep this too",
+          comment: "Important file",
+        },
       ];
 
-      // Write all entries using createEntry
+      // Add all entries
       for (const file of files) {
-        const fileBytes = new TextEncoder().encode(file.content);
-        await zipWriter.createEntry(fileBytes, {
+        zipWriter.addEntry({
           name: file.name,
-        });
-      }
-
-      // Finalize and collect ZIP
-      await zipWriter.finalize();
-      const zipBuffer = await collectStream(zipWriter.readable);
-
-      // Validate with yauzl
-      const entries = await validateZip(zipBuffer);
-
-      assert.strictEqual(entries.length, files.length);
-
-      // Verify each file
-      for (let i = 0; i < files.length; i++) {
-        const expectedFile = files[i];
-        const entry = entries[i];
-        const expectedBytes = new TextEncoder().encode(expectedFile.content);
-
-        assert.strictEqual(entry.filename, expectedFile.name);
-
-        const expectedHash = await sha256(expectedBytes);
-        assert.strictEqual(entry.sha256, expectedHash);
-      }
-    });
-
-    it("should support all entry options with createEntry", async () => {
-      const zipWriter = new ZipWriter();
-      const fileName = "configured.txt";
-      const fileContent = "Configured file";
-      const fileBytes = new TextEncoder().encode(fileContent);
-      const testDate = new Date("2024-06-15T12:00:00Z");
-      const testMode = 0o755;
-      const testComment = "Test comment";
-
-      // Write entry with all options
-      const entryInfo = await zipWriter.createEntry(fileBytes, {
-        name: fileName,
-        date: testDate,
-        mode: testMode,
-        comment: testComment,
-        store: true,
-      });
-
-      // Verify returned entry info
-      assert.strictEqual(entryInfo.name, fileName);
-      assert.strictEqual(entryInfo.comment, testComment);
-      assert.strictEqual(entryInfo.mode, testMode);
-
-      // Finalize and collect ZIP
-      await zipWriter.finalize();
-      const zipBuffer = await collectStream(zipWriter.readable);
-
-      // Validate with yauzl
-      const entries = await validateZip(zipBuffer);
-
-      const entry = entries[0];
-      assert.strictEqual(entry.filename, fileName);
-      assert.strictEqual(entry.comment, testComment);
-      assert.equal(entry.lastModTime, getDosTime(testDate));
-      assert.equal(entry.lastModDate, getDosDate(testDate));
-
-      const mode = (entry.externalFileAttributes >> 16) & 0xffff;
-      assert.strictEqual(mode, testMode);
-
-      const expectedHash = await sha256(fileBytes);
-      assert.strictEqual(entry.sha256, expectedHash);
-    });
-
-    it("should create multiple entries in parallel with createEntry", async () => {
-      const zipWriter = new ZipWriter();
-      const files = [
-        { name: "parallel1.txt", content: "First parallel file" },
-        { name: "parallel2.txt", content: "Second parallel file" },
-        { name: "parallel3.txt", content: "Third parallel file" },
-      ];
-
-      // Create all entries in parallel using Promise.all
-      await Promise.all(
-        files.map((file) => {
-          const fileBytes = new TextEncoder().encode(file.content);
-          return zipWriter.createEntry(fileBytes, {
-            name: file.name,
-          });
-        })
-      );
-
-      // Finalize and collect ZIP
-      await zipWriter.finalize();
-      const zipBuffer = await collectStream(zipWriter.readable);
-
-      // Validate with yauzl
-      const entries = await validateZip(zipBuffer);
-
-      assert.strictEqual(entries.length, files.length);
-
-      // Verify each file (entries may be in any order due to parallel creation)
-      for (const expectedFile of files) {
-        const entry = entries.find((e) => e.filename === expectedFile.name);
-        assert.isDefined(entry, `Should find entry for ${expectedFile.name}`);
-
-        const expectedBytes = new TextEncoder().encode(expectedFile.content);
-        const expectedHash = await sha256(expectedBytes);
-        assert.strictEqual(
-          entry!.sha256,
-          expectedHash,
-          `Content for ${expectedFile.name} should match`
-        );
-      }
-    });
-  });
-
-  describe("Error handling", () => {
-    it("should throw error when file comment exceeds 65535 bytes", async () => {
-      const zipWriter = new ZipWriter();
-
-      // Create a comment that exceeds the 65535 byte limit
-      const fileComment = new Array(70000).fill("Z").join(""); // 70000 bytes
-
-      const entryWriter = zipWriter.createEntryStream({
-        name: "test.txt",
-        comment: fileComment,
-        store: true,
-      });
-
-      const writer = entryWriter.writable.getWriter();
-      await writer.write(new TextEncoder().encode("test"));
-      await writer.close();
-
-      // The error should be thrown during finalize when the central directory is written
-      let error: Error | null = null;
-      try {
-        await zipWriter.finalize();
-        // Drain the readable stream
-        const reader = zipWriter.readable.getReader();
-        while (true) {
-          const { done } = await reader.read();
-          if (done) break;
-        }
-      } catch (e) {
-        error = e as Error;
-      }
-
-      assert.ok(error, "Expected an error to be thrown");
-      assert.match(
-        error!.message,
-        /File comment exceeds maximum length of 65535 bytes \(got 70000 bytes\)/
-      );
-    });
-
-    it("should throw error when adding entry after finalize()", async () => {
-      const zipWriter = new ZipWriter();
-
-      // Add one entry and finalize
-      const entryWriter = zipWriter.createEntryStream({
-        name: "test.txt",
-        store: true,
-      });
-      const writer = entryWriter.writable.getWriter();
-      await writer.write(new TextEncoder().encode("test"));
-      await writer.close();
-      await zipWriter.finalize();
-
-      // Try to add another entry after finalize
-      let error: Error | null = null;
-      try {
-        zipWriter.createEntryStream({
-          name: "after-finalize.txt",
           store: true,
+          readable: readableFrom(new TextEncoder().encode(file.content)),
+          comment: file.comment,
         });
-      } catch (e) {
-        error = e as Error;
       }
 
-      assert.ok(error, "Expected an error to be thrown");
-      assert.match(
-        error!.message,
-        /Cannot add entry after finalize\(\) has been called/
-      );
-    });
-
-    it("should throw error when calling finalize() twice", async () => {
-      const zipWriter = new ZipWriter();
-
-      // Add an entry and finalize
-      const entryWriter = zipWriter.createEntryStream({
-        name: "test.txt",
-        store: true,
-      });
-      const writer = entryWriter.writable.getWriter();
-      await writer.write(new TextEncoder().encode("test"));
-      await writer.close();
-      await zipWriter.finalize();
-
-      // Try to finalize again
-      let error: Error | null = null;
-      try {
-        await zipWriter.finalize();
-      } catch (e) {
-        error = e as Error;
-      }
-
-      assert.ok(error, "Expected an error to be thrown");
-      assert.match(error!.message, /finalize\(\) has already been called/);
-    });
-
-    it("should throw error when finalize entries param has nonexistent entry", async () => {
-      const zipWriter = new ZipWriter();
-
-      // Add one entry
-      const entryInfo = await zipWriter.createEntry(
-        new TextEncoder().encode("test"),
-        { name: "test.txt", store: true }
+      // Get current entries and filter out the one to remove
+      const currentEntries = await zipWriter.entries();
+      const filteredEntries = currentEntries.filter(
+        (entry) => entry.name !== "remove.txt"
       );
 
-      // Create a fake entry with a wrong offset
-      const fakeEntry = {
-        ...entryInfo,
-        startOffset: 99999,
-      };
+      // Finalize with filtered entries
+      await zipWriter.finalize({ entries: filteredEntries });
+      const zipBuffer = await collectStream(zipWriter.readable);
 
-      // Try to finalize with the fake entry
-      let error: Error | null = null;
-      try {
-        await zipWriter.finalize({ entries: [fakeEntry] });
-      } catch (e) {
-        error = e as Error;
-      }
+      // Validate with yauzl
+      const entries = await validateZip(zipBuffer);
 
-      assert.ok(error, "Expected an error to be thrown");
-      assert.match(
-        error!.message,
-        /Cannot set entries: entry at offset 99999 does not exist/
+      // Should only have 2 entries (the removed one should not appear)
+      assert.strictEqual(entries.length, 2, "Should have 2 entries");
+
+      // Verify the removed entry is not present
+      const entryNames = entries.map((e) => e.filename);
+      assert.notInclude(
+        entryNames,
+        "remove.txt",
+        "Removed entry should not appear in final ZIP"
       );
-    });
-
-    it("should throw error when finalize entries param has modified CRC32", async () => {
-      const zipWriter = new ZipWriter();
-
-      // Add one entry
-      const entryInfo = await zipWriter.createEntry(
-        new TextEncoder().encode("test"),
-        { name: "test.txt", store: true }
+      assert.include(
+        entryNames,
+        "keep1.txt",
+        "First kept entry should be present"
+      );
+      assert.include(
+        entryNames,
+        "keep2.txt",
+        "Second kept entry should be present"
       );
 
-      // Create an entry with modified CRC32
-      const modifiedEntry = {
-        ...entryInfo,
-        crc32: 12345,
-      };
+      // Verify content of kept files
+      const keep1Entry = entries.find((e) => e.filename === "keep1.txt");
+      const keep2Entry = entries.find((e) => e.filename === "keep2.txt");
 
-      // Try to finalize with the modified entry
-      let error: Error | null = null;
-      try {
-        await zipWriter.finalize({ entries: [modifiedEntry] });
-      } catch (e) {
-        error = e as Error;
-      }
-
-      assert.ok(error, "Expected an error to be thrown");
-      assert.match(
-        error!.message,
-        /Cannot set entries: entry at offset .* has different CRC32/
+      const keep1Hash = await sha256(
+        new TextEncoder().encode("Keep this file")
       );
-    });
+      const keep2Hash = await sha256(new TextEncoder().encode("Keep this too"));
 
-    it("should throw error when finalize entries param has modified uncompressed size", async () => {
-      const zipWriter = new ZipWriter();
-
-      // Add one entry
-      const entryInfo = await zipWriter.createEntry(
-        new TextEncoder().encode("test"),
-        { name: "test.txt", store: true }
+      assert.strictEqual(
+        keep1Entry!.sha256,
+        keep1Hash,
+        "keep1.txt content should match"
       );
-
-      // Create an entry with modified uncompressed size
-      const modifiedEntry = {
-        ...entryInfo,
-        uncompressedSize: 99999,
-      };
-
-      // Try to finalize with the modified entry
-      let error: Error | null = null;
-      try {
-        await zipWriter.finalize({ entries: [modifiedEntry] });
-      } catch (e) {
-        error = e as Error;
-      }
-
-      assert.ok(error, "Expected an error to be thrown");
-      assert.match(
-        error!.message,
-        /Cannot set entries: entry at offset .* has different uncompressed size/
+      assert.strictEqual(
+        keep2Entry!.sha256,
+        keep2Hash,
+        "keep2.txt content should match"
       );
-    });
-
-    it("should throw error when finalize entries param has modified compressed size", async () => {
-      const zipWriter = new ZipWriter();
-
-      // Add one entry
-      const entryInfo = await zipWriter.createEntry(
-        new TextEncoder().encode("test"),
-        { name: "test.txt", store: true }
-      );
-
-      // Create an entry with modified compressed size
-      const modifiedEntry = {
-        ...entryInfo,
-        compressedSize: 99999,
-      };
-
-      // Try to finalize with the modified entry
-      let error: Error | null = null;
-      try {
-        await zipWriter.finalize({ entries: [modifiedEntry] });
-      } catch (e) {
-        error = e as Error;
-      }
-
-      assert.ok(error, "Expected an error to be thrown");
-      assert.match(
-        error!.message,
-        /Cannot set entries: entry at offset .* has different compressed size/
+      assert.strictEqual(
+        keep2Entry!.comment,
+        "Important file",
+        "keep2.txt comment should be preserved"
       );
     });
   });

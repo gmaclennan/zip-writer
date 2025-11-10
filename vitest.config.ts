@@ -17,6 +17,7 @@ export default defineConfig({
     reporters: process.env.CI ? ["verbose"] : ["default"],
     coverage: {
       provider: "istanbul",
+      include: ["src/**/*.ts"],
     },
     projects: [
       {

@@ -21,6 +21,7 @@
     "test:lint": "eslint .",
     "test:vitest": "vitest",
     "bench": "vitest bench",
+    "coverage": "vitest run --coverage",
     "format": "prettier --write .",
     "prepack": "rimraf dist && tsc"
   },
@@ -74,5 +75,8 @@
   "bugs": {
     "url": "https://github.com/gmaclennan/zip-writer/issues"
   },
-  "homepage": "https://github.com/gmaclennan/zip-writer#readme"
+  "homepage": "https://github.com/gmaclennan/zip-writer#readme",
+  "dependencies": {
+    "p-mutex": "^1.0.0"
+  }
 }
