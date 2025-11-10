@@ -5,6 +5,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./readable-from-bytes.js": {
+      "types": "./dist/readable-from-bytes.d.ts",
+      "import": "./dist/readable-from-bytes.js"
     }
   },
   "imports": {

@@ -116,32 +116,6 @@ export function getDosDate(date: Date): number {
   );
 }
 
-export function readableFrom(data: Uint8Array) {
-  let offset = 0;
-  return new ReadableStream(
-    {
-      pull(controller) {
-        if (offset >= data.length) {
-          controller.close();
-          return;
-        }
-        if (controller.desiredSize === null) {
-          controller.close();
-          return;
-        }
-        const chunkSize = Math.min(
-          controller.desiredSize,
-          data.length - offset
-        );
-        const chunk = data.subarray(offset, offset + chunkSize);
-        controller.enqueue(chunk);
-        offset += chunkSize;
-      },
-    },
-    new ByteLengthQueuingStrategy({ highWaterMark: 16 * 1024 })
-  );
-}
-
 export function createSink(): WritableStream<Uint8Array> {
   return new WritableStream<Uint8Array>({
     write(chunk) {

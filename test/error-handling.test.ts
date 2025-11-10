@@ -4,8 +4,8 @@ import {
   createSink,
   errorReadableStream,
   errorWritableStream,
-  readableFrom,
 } from "./utils.js";
+import { readableFromBytes } from "../src/readable-from-bytes.js";
 
 describe("Error Handling", () => {
   describe("Invalid Input: addEntry()", () => {
@@ -18,7 +18,7 @@ describe("Error Handling", () => {
       assert.throws(
         () =>
           zipWriter.addEntry({
-            readable: readableFrom(new TextEncoder().encode("test")),
+            readable: readableFromBytes(new TextEncoder().encode("test")),
             name: fileName,
             store: true,
           }),
@@ -42,7 +42,7 @@ describe("Error Handling", () => {
       assert.throws(
         () =>
           zipWriter.addEntry({
-            readable: readableFrom(new TextEncoder().encode("test")),
+            readable: readableFromBytes(new TextEncoder().encode("test")),
             name: "test.txt",
             comment: fileComment,
             store: true,
@@ -64,7 +64,7 @@ describe("Error Handling", () => {
       assert.throws(
         () =>
           zipWriter.addEntry({
-            readable: readableFrom(new TextEncoder().encode("test")),
+            readable: readableFromBytes(new TextEncoder().encode("test")),
             name: "test.txt",
             mode: 70000, // Invalid mode (> 65535)
             store: true,
@@ -89,7 +89,7 @@ describe("Error Handling", () => {
       const entryInfo = await zipWriter.addEntry({
         name: "test.txt",
         store: true,
-        readable: readableFrom(new TextEncoder().encode("test")),
+        readable: readableFromBytes(new TextEncoder().encode("test")),
       });
 
       // Create a fake entry with a wrong offset
@@ -126,7 +126,7 @@ describe("Error Handling", () => {
       const entryInfo = await zipWriter.addEntry({
         name: "test.txt",
         store: true,
-        readable: readableFrom(new TextEncoder().encode("test")),
+        readable: readableFromBytes(new TextEncoder().encode("test")),
       });
 
       // Create an entry with modified CRC32
@@ -158,7 +158,7 @@ describe("Error Handling", () => {
       const entryInfo = await zipWriter.addEntry({
         name: "test.txt",
         store: true,
-        readable: readableFrom(new TextEncoder().encode("test")),
+        readable: readableFromBytes(new TextEncoder().encode("test")),
       });
 
       // Create an entry with modified uncompressed size
@@ -194,7 +194,7 @@ describe("Error Handling", () => {
       const entryInfo = await zipWriter.addEntry({
         name: "test.txt",
         store: true,
-        readable: readableFrom(new TextEncoder().encode("test")),
+        readable: readableFromBytes(new TextEncoder().encode("test")),
       });
 
       // Create an entry with modified compressed size
@@ -230,7 +230,7 @@ describe("Error Handling", () => {
 
       // Add one entry and finalize
       zipWriter.addEntry({
-        readable: readableFrom(new TextEncoder().encode("test")),
+        readable: readableFromBytes(new TextEncoder().encode("test")),
         name: "test.txt",
         store: true,
       });
@@ -238,7 +238,7 @@ describe("Error Handling", () => {
 
       assert.throws(() => {
         zipWriter.addEntry({
-          readable: readableFrom(new TextEncoder().encode("test")),
+          readable: readableFromBytes(new TextEncoder().encode("test")),
           name: "after-finalize.txt",
           store: true,
         });
@@ -255,7 +255,7 @@ describe("Error Handling", () => {
 
       // Add an entry and finalize
       zipWriter.addEntry({
-        readable: readableFrom(new TextEncoder().encode("test")),
+        readable: readableFromBytes(new TextEncoder().encode("test")),
         name: "test.txt",
         store: true,
       });
@@ -310,7 +310,7 @@ describe("Error Handling", () => {
       // Write entry
       const addEntryPromise = zipWriter.addEntry({
         name: "test.txt",
-        readable: readableFrom(new TextEncoder().encode("Hello, world!")),
+        readable: readableFromBytes(new TextEncoder().encode("Hello, world!")),
       });
 
       // Wait for all to settle
@@ -333,7 +333,7 @@ describe("Error Handling", () => {
       // Write entry
       await zipWriter.addEntry({
         name: "test.txt",
-        readable: readableFrom(new TextEncoder().encode("Hello, world!")),
+        readable: readableFromBytes(new TextEncoder().encode("Hello, world!")),
       });
 
       forcedError = new Error("Forced error");
@@ -357,7 +357,7 @@ describe("Error Handling", () => {
       // Write entry
       zipWriter.addEntry({
         name: "test.txt",
-        readable: readableFrom(new TextEncoder().encode("Hello, world!")),
+        readable: readableFromBytes(new TextEncoder().encode("Hello, world!")),
       });
 
       // Finalize without awaiting
@@ -376,7 +376,7 @@ describe("Error Handling", () => {
       // Write entry without awaiting
       zipWriter.addEntry({
         name: "test.txt",
-        readable: readableFrom(new TextEncoder().encode("Hello, world!")),
+        readable: readableFromBytes(new TextEncoder().encode("Hello, world!")),
       });
 
       zipWriter.finalize();

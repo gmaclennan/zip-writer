@@ -6,9 +6,8 @@ import {
   sha256,
   getDosTime,
   getDosDate,
-  readableFrom,
 } from "./utils.js";
-import { crc32 } from "../src/crc-browser.js";
+import { readableFromBytes } from "../src/readable-from-bytes.js";
 
 describe("ZIP Integration Tests", () => {
   describe("Single file archives", () => {
@@ -20,7 +19,7 @@ describe("ZIP Integration Tests", () => {
 
       // Write entry
       zipWriter.addEntry({
-        readable: readableFrom(fileBytes),
+        readable: readableFromBytes(fileBytes),
         name: fileName,
         store: true,
       });
@@ -63,7 +62,7 @@ describe("ZIP Integration Tests", () => {
 
       // Write entry with deflate (default)
       zipWriter.addEntry({
-        readable: readableFrom(fileBytes),
+        readable: readableFromBytes(fileBytes),
         name: fileName,
       });
 
@@ -126,7 +125,7 @@ describe("ZIP Integration Tests", () => {
         zipWriter.addEntry({
           name: file.name,
           store: true,
-          readable: readableFrom(new TextEncoder().encode(file.content)),
+          readable: readableFromBytes(new TextEncoder().encode(file.content)),
         });
       }
 
@@ -176,7 +175,7 @@ describe("ZIP Integration Tests", () => {
         zipWriter.addEntry({
           name: file.name,
           store: true,
-          readable: readableFrom(new TextEncoder().encode(file.content)),
+          readable: readableFromBytes(new TextEncoder().encode(file.content)),
         });
       }
 
@@ -219,7 +218,7 @@ describe("ZIP Integration Tests", () => {
         name: fileName,
         store: true,
         date: testDate,
-        readable: readableFrom(new TextEncoder().encode("Content")),
+        readable: readableFromBytes(new TextEncoder().encode("Content")),
       });
 
       zipWriter.finalize();
@@ -251,7 +250,7 @@ describe("ZIP Integration Tests", () => {
         name: fileName,
         store: true,
         comment: fileComment,
-        readable: readableFrom(
+        readable: readableFromBytes(
           new TextEncoder().encode("Content with comment")
         ),
       });
@@ -277,7 +276,7 @@ describe("ZIP Integration Tests", () => {
         name: fileName,
         store: true,
         mode: fileMode,
-        readable: readableFrom(
+        readable: readableFromBytes(
           new TextEncoder().encode("#!/bin/bash\necho 'test'")
         ),
       });
@@ -312,7 +311,7 @@ describe("ZIP Integration Tests", () => {
         zipWriter.addEntry({
           name: file.name,
           store: true,
-          readable: readableFrom(new TextEncoder().encode(file.content)),
+          readable: readableFromBytes(new TextEncoder().encode(file.content)),
         });
       }
 
@@ -352,7 +351,7 @@ describe("ZIP Integration Tests", () => {
       zipWriter.addEntry({
         name: fileName,
         store: true,
-        readable: readableFrom(new Uint8Array(0)),
+        readable: readableFromBytes(new Uint8Array(0)),
       });
 
       await zipWriter.finalize();
@@ -387,7 +386,7 @@ describe("ZIP Integration Tests", () => {
       zipWriter.addEntry({
         name: longName,
         store: true,
-        readable: readableFrom(new TextEncoder().encode("Content")),
+        readable: readableFromBytes(new TextEncoder().encode("Content")),
       });
 
       zipWriter.finalize();
@@ -419,7 +418,7 @@ describe("ZIP Integration Tests", () => {
         zipWriter.addEntry({
           name: file.name,
           store: file.store,
-          readable: readableFrom(new TextEncoder().encode(file.content)),
+          readable: readableFromBytes(new TextEncoder().encode(file.content)),
         });
       }
 
@@ -477,7 +476,7 @@ describe("ZIP Integration Tests", () => {
         zipWriter.addEntry({
           name: file.name,
           store: true,
-          readable: readableFrom(new TextEncoder().encode(file.content)),
+          readable: readableFromBytes(new TextEncoder().encode(file.content)),
           comment: file.comment,
         });
       }
