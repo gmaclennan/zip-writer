@@ -22,6 +22,8 @@ import {
   EOCD64_LOCATOR_SIZE,
   BIG_ENDIAN,
   LITTLE_ENDIAN,
+  MAX_2_BYTE,
+  MAX_4_BYTE,
 } from "./constants.js";
 import {
   getDosTime,
@@ -31,104 +33,34 @@ import {
   UINT32,
   UINT64,
   validateEntryOptions,
+  eocdNeedsZip64,
 } from "./utils.js";
-
-const textEncoder = new TextEncoder();
 
 /**
  * Generate the Central Directory File Header for the given entry info.
  */
 export function getCDFH(entryInfo: EntryInfoInternal): Uint8Array<ArrayBuffer> {
-  if (entryInfo.zip64) {
-    return getCDFHZip64(entryInfo);
-  } else {
-    return getCDFHStandard(entryInfo);
-  }
-}
-
-function getCDFHStandard(
-  entryInfo: EntryInfoStandard
-): Uint8Array<ArrayBuffer> {
-  const { nameBytes, commentBytes } = entryInfo;
+  const { nameBytes, commentBytes, zip64 } = entryInfo;
   validateEntryOptions(entryInfo);
 
-  const headerSize =
-    CENTRAL_DIRECTORY_HEADER_SIZE + nameBytes.length + commentBytes.length;
-  const header = new Uint8Array(headerSize);
-  const view = new DataView(header.buffer);
-  const date = entryInfo.date || new Date();
-  const externalAttrs = entryInfo.mode ? entryInfo.mode << 16 : 0;
-  const compressionMethod = entryInfo.store
-    ? COMPRESSION_METHOD_STORE
-    : COMPRESSION_METHOD_DEFLATE;
-
-  let offset = writeDataView(view, [
-    // Central directory file header signature
-    [UINT32, CENTRAL_DIRECTORY_SIGNATURE, BIG_ENDIAN],
-    // Version made by
-    [UINT16, VERSION_MADE_BY, LITTLE_ENDIAN],
-    // Version needed to extract
-    [UINT16, VERSION_NEEDED_STANDARD, LITTLE_ENDIAN],
-    // General purpose bit flag
-    [UINT16, GENERAL_PURPOSE_FLAGS, LITTLE_ENDIAN],
-    // Compression method
-    [UINT16, compressionMethod, LITTLE_ENDIAN],
-    // Last mod file time & date
-    [UINT16, getDosTime(date), LITTLE_ENDIAN],
-    [UINT16, getDosDate(date), LITTLE_ENDIAN],
-    // CRC-32
-    [UINT32, entryInfo.crc32, LITTLE_ENDIAN],
-    // Compressed size
-    [UINT32, entryInfo.compressedSize, LITTLE_ENDIAN],
-    // Uncompressed size
-    [UINT32, entryInfo.uncompressedSize, LITTLE_ENDIAN],
-    // File name length
-    [UINT16, nameBytes.length, LITTLE_ENDIAN],
-    // Extra field length
-    [UINT16, 0, LITTLE_ENDIAN],
-    // File comment length
-    [UINT16, commentBytes.length, LITTLE_ENDIAN],
-    // Disk number start
-    [UINT16, 0, LITTLE_ENDIAN],
-    // Internal file attributes
-    [UINT16, 0, LITTLE_ENDIAN],
-    // External file attributes (Unix permissions if provided)
-    [UINT32, externalAttrs, LITTLE_ENDIAN],
-    // Relative offset of local header
-    [UINT32, entryInfo.startOffset, LITTLE_ENDIAN],
-  ]);
-
-  // File name
-  header.set(nameBytes, offset);
-  offset += nameBytes.length;
-
-  // File comment
-  if (commentBytes.length > 0) {
-    header.set(commentBytes, offset);
+  let extraField = new Uint8Array(0);
+  if (zip64) {
+    // Extra field for ZIP64
+    extraField = new Uint8Array(28); // ZIP64 extra field
+    const extraView = new DataView(extraField.buffer);
+    writeDataView(extraView, [
+      // ZIP64 extra field tag
+      [UINT16, 0x0001, LITTLE_ENDIAN],
+      // Size of extra field data (3x 8-byte fields)
+      [UINT16, 24, LITTLE_ENDIAN],
+      // Original size
+      [UINT64, entryInfo.uncompressedSize, LITTLE_ENDIAN],
+      // Compressed size
+      [UINT64, entryInfo.compressedSize, LITTLE_ENDIAN],
+      // Relative header offset
+      [UINT64, entryInfo.startOffset, LITTLE_ENDIAN],
+    ]);
   }
-
-  return header;
-}
-
-function getCDFHZip64(entryInfo: EntryInfoZip64): Uint8Array<ArrayBuffer> {
-  const { nameBytes, commentBytes } = entryInfo;
-  validateEntryOptions(entryInfo);
-
-  // Extra field for ZIP64
-  const extraField = new Uint8Array(28); // ZIP64 extra field
-  const extraView = new DataView(extraField.buffer);
-  writeDataView(extraView, [
-    // ZIP64 extra field tag
-    [UINT16, 0x0001, LITTLE_ENDIAN],
-    // Size of extra field data (3x 8-byte fields)
-    [UINT16, 24, LITTLE_ENDIAN],
-    // Original size
-    [UINT64, entryInfo.uncompressedSize, LITTLE_ENDIAN],
-    // Compressed size
-    [UINT64, entryInfo.compressedSize, LITTLE_ENDIAN],
-    // Relative header offset
-    [UINT64, entryInfo.startOffset, LITTLE_ENDIAN],
-  ]);
 
   const headerSize =
     CENTRAL_DIRECTORY_HEADER_SIZE +
@@ -149,7 +81,11 @@ function getCDFHZip64(entryInfo: EntryInfoZip64): Uint8Array<ArrayBuffer> {
     // Version made by
     [UINT16, VERSION_MADE_BY, LITTLE_ENDIAN],
     // Version needed to extract
-    [UINT16, VERSION_NEEDED_ZIP64, LITTLE_ENDIAN],
+    [
+      UINT16,
+      zip64 ? VERSION_NEEDED_ZIP64 : VERSION_NEEDED_STANDARD,
+      LITTLE_ENDIAN,
+    ],
     // General purpose bit flag
     [UINT16, GENERAL_PURPOSE_FLAGS, LITTLE_ENDIAN],
     // Compression method
@@ -160,9 +96,17 @@ function getCDFHZip64(entryInfo: EntryInfoZip64): Uint8Array<ArrayBuffer> {
     // CRC-32
     [UINT32, entryInfo.crc32, LITTLE_ENDIAN],
     // Compressed size (0xFFFFFFFF for ZIP64)
-    [UINT32, 0xffffffff, LITTLE_ENDIAN],
+    [
+      UINT32,
+      zip64 ? MAX_4_BYTE : Number(entryInfo.compressedSize),
+      LITTLE_ENDIAN,
+    ],
     // Uncompressed size (0xFFFFFFFF for ZIP64)
-    [UINT32, 0xffffffff, LITTLE_ENDIAN],
+    [
+      UINT32,
+      zip64 ? MAX_4_BYTE : Number(entryInfo.uncompressedSize),
+      LITTLE_ENDIAN,
+    ],
     // File name length
     [UINT16, nameBytes.length, LITTLE_ENDIAN],
     // Extra field length
@@ -176,7 +120,7 @@ function getCDFHZip64(entryInfo: EntryInfoZip64): Uint8Array<ArrayBuffer> {
     // External file attributes (Unix permissions if provided)
     [UINT32, externalAttrs, LITTLE_ENDIAN],
     // Relative offset of local header (0xFFFFFFFF for ZIP64)
-    [UINT32, 0xffffffff, LITTLE_ENDIAN],
+    [UINT32, zip64 ? 0xffffffff : Number(entryInfo.startOffset), LITTLE_ENDIAN],
   ]);
 
   // File name
@@ -184,8 +128,10 @@ function getCDFHZip64(entryInfo: EntryInfoZip64): Uint8Array<ArrayBuffer> {
   offset += nameBytes.length;
 
   // Extra field
-  header.set(extraField, offset);
-  offset += extraField.length;
+  if (extraField.length > 0) {
+    header.set(extraField, offset);
+    offset += extraField.length;
+  }
 
   // File comment
   if (commentBytes.length > 0) {
@@ -231,69 +177,90 @@ export function getEOCDStandard(
 /**
  * Generate the ZIP64 End of Central Directory record.
  */
-export function getEOCDZip64(
-  entriesCount: bigint,
-  centralDirectoryOffset: bigint,
-  centralDirectorySize: bigint
-): Uint8Array<ArrayBuffer> {
-  const totalSize = EOCD64_SIZE + EOCD64_LOCATOR_SIZE + EOCD_SIZE;
+export function getEOCD(options: {
+  entriesCount: number;
+  centralDirectoryStart: bigint;
+  centralDirectorySize: bigint;
+}): Uint8Array<ArrayBuffer> {
+  const zip64 = eocdNeedsZip64(options);
+  const { entriesCount, centralDirectoryStart, centralDirectorySize } = options;
+  const totalSize = zip64
+    ? EOCD64_SIZE + EOCD64_LOCATOR_SIZE + EOCD_SIZE
+    : EOCD_SIZE;
   const buffer = new Uint8Array(totalSize);
   const view = new DataView(buffer.buffer);
+  let offset = 0;
 
-  let offset = writeDataView(view, [
-    // === ZIP64 End of Central Directory Record ===
+  if (zip64) {
+    offset = writeDataView(view, [
+      // === ZIP64 End of Central Directory Record ===
 
-    // End of central dir signature
-    [UINT32, ZIP64_END_OF_CENTRAL_DIR_SIGNATURE, BIG_ENDIAN],
-    // Size of zip64 end of central directory record excluding the leading 12 bytes
-    [UINT64, BigInt(EOCD64_SIZE - 12), LITTLE_ENDIAN],
-    // Version made by
-    [UINT16, VERSION_MADE_BY, LITTLE_ENDIAN],
-    // Version needed to extract
-    [UINT16, VERSION_NEEDED_ZIP64, LITTLE_ENDIAN],
-    // Number of this disk
-    [UINT32, 0, LITTLE_ENDIAN],
-    // Disk where central directory starts
-    [UINT32, 0, LITTLE_ENDIAN],
-    // Number of central directory records on this disk
-    [UINT64, entriesCount, LITTLE_ENDIAN],
-    // Total number of central directory records
-    [UINT64, entriesCount, LITTLE_ENDIAN],
-    // Size of central directory
-    [UINT64, centralDirectorySize, LITTLE_ENDIAN],
-    // Offset of start of central directory
-    [UINT64, centralDirectoryOffset, LITTLE_ENDIAN],
+      // End of central dir signature
+      [UINT32, ZIP64_END_OF_CENTRAL_DIR_SIGNATURE, BIG_ENDIAN],
+      // Size of zip64 end of central directory record excluding the leading 12 bytes
+      [UINT64, BigInt(EOCD64_SIZE - 12), LITTLE_ENDIAN],
+      // Version made by
+      [UINT16, VERSION_MADE_BY, LITTLE_ENDIAN],
+      // Version needed to extract
+      [UINT16, VERSION_NEEDED_ZIP64, LITTLE_ENDIAN],
+      // Number of this disk
+      [UINT32, 0, LITTLE_ENDIAN],
+      // Disk where central directory starts
+      [UINT32, 0, LITTLE_ENDIAN],
+      // Number of central directory records on this disk
+      [UINT64, BigInt(entriesCount), LITTLE_ENDIAN],
+      // Total number of central directory records
+      [UINT64, BigInt(entriesCount), LITTLE_ENDIAN],
+      // Size of central directory
+      [UINT64, centralDirectorySize, LITTLE_ENDIAN],
+      // Offset of start of central directory
+      [UINT64, centralDirectoryStart, LITTLE_ENDIAN],
 
-    // === ZIP64 End of Central Directory Locator ===
+      // === ZIP64 End of Central Directory Locator ===
 
-    // Zip64 end of central dir locator signature
-    [UINT32, ZIP64_END_OF_CENTRAL_DIR_LOCATOR_SIGNATURE, BIG_ENDIAN],
-    // Number of the disk with the start of the zip64 end of central directory
-    [UINT32, 0, LITTLE_ENDIAN],
-    // Relative offset of the zip64 end of central directory record
-    [UINT64, centralDirectoryOffset + centralDirectorySize, LITTLE_ENDIAN],
-    // Total number of disks
-    [UINT32, 1, LITTLE_ENDIAN],
+      // Zip64 end of central dir locator signature
+      [UINT32, ZIP64_END_OF_CENTRAL_DIR_LOCATOR_SIGNATURE, BIG_ENDIAN],
+      // Number of the disk with the start of the zip64 end of central directory
+      [UINT32, 0, LITTLE_ENDIAN],
+      // Relative offset of the zip64 end of central directory record
+      [UINT64, centralDirectoryStart + centralDirectorySize, LITTLE_ENDIAN],
+      // Total number of disks
+      [UINT32, 1, LITTLE_ENDIAN],
+    ]);
+  }
 
-    // === Standard End of Central Directory Record ===
+  // === Standard End of Central Directory Record ===
 
-    // End of central dir signature
-    [UINT32, END_OF_CENTRAL_DIR_SIGNATURE, BIG_ENDIAN],
-    // Number of this disk
-    [UINT16, 0, LITTLE_ENDIAN],
-    // Disk where central directory starts
-    [UINT16, 0, LITTLE_ENDIAN],
-    // Number of central directory records on this disk
-    [UINT16, 0xffff, LITTLE_ENDIAN],
-    // Total number of central directory records
-    [UINT16, 0xffff, LITTLE_ENDIAN],
-    // Size of central directory
-    [UINT32, 0xffffffff, LITTLE_ENDIAN],
-    // Offset of start of central directory
-    [UINT32, 0xffffffff, LITTLE_ENDIAN],
-    // ZIP file comment length
-    [UINT16, 0, LITTLE_ENDIAN],
-  ]);
+  writeDataView(
+    view,
+    [
+      // End of central dir signature
+      [UINT32, END_OF_CENTRAL_DIR_SIGNATURE, BIG_ENDIAN],
+      // Number of this disk
+      [UINT16, 0, LITTLE_ENDIAN],
+      // Disk where central directory starts
+      [UINT16, 0, LITTLE_ENDIAN],
+      // Number of central directory records on this disk
+      [UINT16, zip64 ? MAX_2_BYTE : entriesCount, LITTLE_ENDIAN],
+      // Total number of central directory records
+      [UINT16, zip64 ? MAX_2_BYTE : entriesCount, LITTLE_ENDIAN],
+      // Size of central directory
+      [
+        UINT32,
+        zip64 ? MAX_4_BYTE : Number(centralDirectorySize),
+        LITTLE_ENDIAN,
+      ],
+      // Offset of start of central directory
+      [
+        UINT32,
+        zip64 ? MAX_4_BYTE : Number(centralDirectoryStart),
+        LITTLE_ENDIAN,
+      ],
+      // ZIP file comment length
+      [UINT16, 0, LITTLE_ENDIAN],
+    ],
+    offset
+  );
 
   return buffer;
 }

@@ -12,7 +12,7 @@ export const VERSION_NEEDED_STANDARD = 20; // Version 2.0
 export const VERSION_NEEDED_ZIP64 = 45; // Version 4.5 for ZIP64
 
 // Flags
-export const GENERAL_PURPOSE_FLAGS = 0b0000_1000_0000_1000; // Bit 3: data descriptor, Bit 11: UTF-8
+export const GENERAL_PURPOSE_FLAGS = 0b0000_1000_0000_1000; // Bit 3: crc and file-sizes unknown when header was written, Bit 11: UTF-8
 
 // Compression methods
 export const COMPRESSION_METHOD_STORE = 0;
@@ -29,6 +29,8 @@ export const EOCD64_LOCATOR_SIZE = 20;
 
 // Limits
 export const ZIP64_LIMIT = BigInt(0xffffffff);
+export const MAX_2_BYTE = 0xffff;
+export const MAX_4_BYTE = 0xffffffff;
 
 /** Little-endian for DataView methods */
 export const LITTLE_ENDIAN = true;
