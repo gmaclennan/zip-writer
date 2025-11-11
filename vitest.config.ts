@@ -3,13 +3,16 @@ import { playwright } from "@vitest/browser-playwright";
 import type { BrowserInstanceOption } from "vitest/node";
 import { validateZip } from "./test/commands.js";
 
-const browserInstances: BrowserInstanceOption[] = [
-  { browser: "chromium" },
-  { browser: "firefox" },
-];
+const browserInstances: BrowserInstanceOption[] = [{ browser: "chromium" }];
 
 if (process.platform === "darwin") {
   browserInstances.push({ browser: "webkit" });
+}
+
+if (process.platform !== "win32") {
+  // Firefox tests keep timing out on Windows CI runners due to
+  // https://github.com/microsoft/playwright/issues/34586
+  browserInstances.push({ browser: "firefox" });
 }
 
 export default defineConfig({
