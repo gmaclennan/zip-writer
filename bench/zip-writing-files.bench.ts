@@ -13,7 +13,7 @@
 import { describe, bench } from "vitest";
 import { ZipWriter } from "../src/index.js";
 import { mkdir, writeFile, rm, readFile, readdir, mkdtemp } from "fs/promises";
-import { createWriteStream, createReadStream } from "fs";
+import { createWriteStream, createReadStream, read } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { Readable, Writable } from "stream";
@@ -23,6 +23,11 @@ import { zip as fflateZip } from "fflate";
 import { ZipWriter as ZipJsWriter } from "@zip.js/zip.js";
 import { crc32 as nodeRsCrc32 } from "@node-rs/crc32";
 import { crc32 as jsCrc32 } from "../src/crc-browser.js";
+
+const tempDir = await mkdtemp(join(tmpdir(), "zip-bench-"));
+process.on("beforeExit", async () => {
+  await rm(tempDir, { recursive: true, force: true });
+});
 
 /**
  * Helper to stream a ReadableStream to a file
@@ -39,13 +44,14 @@ async function streamToFile(
 /**
  * Create test fixtures with random compressible data
  */
-async function createFixtures(
-  fixtureDir: string,
-  fileCount: number,
-  fileSize: number
-): Promise<string[]> {
-  await mkdir(fixtureDir, { recursive: true });
-  const filePaths: string[] = [];
+async function createFixtures({
+  fileCount,
+  fileSize,
+}: {
+  fileCount: number;
+  fileSize: number;
+}): Promise<string> {
+  const fixtureDir = await mkdtemp(join(tempDir, "zip-bench-fixtures-"));
 
   for (let i = 0; i < fileCount; i++) {
     const fileName = `file-${i.toString().padStart(6, "0")}.txt`;
@@ -69,10 +75,9 @@ async function createFixtures(
     }
 
     await writeFile(filePath, buffer);
-    filePaths.push(filePath);
   }
 
-  return filePaths;
+  return fixtureDir;
 }
 
 /**
@@ -139,11 +144,16 @@ async function benchmarkFflate(
 
   // Build file map for fflate
   const files: Record<string, Uint8Array> = {};
+  const readPromises: Promise<void>[] = [];
   for (const fileName of fileNames) {
     const filePath = join(fixtureDir, fileName);
-    const content = await readFile(filePath);
-    files[fileName] = content;
+    readPromises.push(
+      readFile(filePath).then((content) => {
+        files[fileName] = content;
+      })
+    );
   }
+  await Promise.all(readPromises);
 
   // fflate zip is async and uses callbacks
   return new Promise((resolve, reject) => {
@@ -171,76 +181,85 @@ async function benchmarkZipJs(
     Writable.toWeb(createWriteStream(outputPath)) as WritableStream<Uint8Array>
   );
 
+  const readPromises: Promise<any>[] = [];
   for (const fileName of fileNames) {
     const filePath = join(fixtureDir, fileName);
     const content = Readable.toWeb(createReadStream(filePath));
-    await zipWriter.add(fileName, content as ReadableStream);
+    readPromises.push(zipWriter.add(fileName, content as ReadableStream));
   }
 
+  await Promise.all(readPromises);
   await zipWriter.close();
 }
 
 function benchmarks({
-  fixtureDir,
-  outputDir,
-  benchOptions,
+  fileCount,
+  fileSize,
+  ...benchOptions
 }: {
-  fixtureDir: string;
-  outputDir: string;
-  benchOptions: import("vitest").BenchOptions;
-}) {
+  fileCount: number;
+  fileSize: number;
+} & import("vitest").BenchOptions) {
+  let fixtureDir: string;
+  let i = 0;
+
+  async function setup() {
+    if (fixtureDir) return;
+    fixtureDir = await createFixtures({ fileCount, fileSize });
+  }
+
   bench(
     "zip-writable",
     async () => {
-      const outputPath = join(outputDir, `zip-writable-${Date.now()}.zip`);
+      const outputPath = join(tempDir, `zip-bench-output-${i++}.zip`);
       await benchmarkZipWritable(fixtureDir, outputPath);
     },
-    benchOptions
+    { setup, ...benchOptions }
   );
 
   bench(
     "zip-writable (@node-rs/crc32)",
     async () => {
-      const outputPath = join(outputDir, `zip-writable-${Date.now()}.zip`);
+      const outputPath = join(tempDir, `zip-bench-output-${i++}.zip`);
       await benchmarkZipWritable(fixtureDir, outputPath, nodeRsCrc32);
     },
-    benchOptions
+    { setup, ...benchOptions }
   );
 
   bench(
     "zip-writable (js crc32)",
     async () => {
-      const outputPath = join(outputDir, `zip-writable-${Date.now()}.zip`);
+      const outputPath = join(tempDir, `zip-bench-output-${i++}.zip`);
       await benchmarkZipWritable(fixtureDir, outputPath, jsCrc32);
     },
-    benchOptions
+    { setup, ...benchOptions }
   );
 
   bench(
     "archiver",
     async () => {
-      const outputPath = join(outputDir, `archiver-${Date.now()}.zip`);
+      const outputPath = join(tempDir, `zip-bench-output-${i++}.zip`);
       await benchmarkArchiver(fixtureDir, outputPath);
     },
-    benchOptions
+    { setup, ...benchOptions }
   );
 
   bench(
     "fflate",
     async () => {
-      const outputPath = join(outputDir, `fflate-${Date.now()}.zip`);
+      const outputPath = join(tempDir, `zip-bench-output-${i++}.zip`);
       await benchmarkFflate(fixtureDir, outputPath);
     },
-    benchOptions
+    { setup, ...benchOptions }
   );
 
   bench(
     "@zip.js/zip.js",
     async () => {
-      const outputPath = join(outputDir, `zipjs-${Date.now()}.zip`);
+      const outputPath = join(tempDir, `zip-bench-output-${i++}.zip`);
       await benchmarkZipJs(fixtureDir, outputPath);
     },
-    benchOptions
+    { setup, ...benchOptions }
   );
 }
 
@@ -249,40 +268,12 @@ function benchmarks({
 // ============================================================================
 
 describe("Small files (10 × 10KB)", () => {
-  const baseDir = tmpdir();
-  const fixtureDir = join(baseDir, `bench-small-fixtures-${Date.now()}`);
-  const outputDir = join(baseDir, `bench-small-output-${Date.now()}`);
-
-  let setupPromise: Promise<void> | null = null;
-  let isSetupComplete = false;
-  const benchOptions = {
+  benchmarks({
+    fileCount: 10,
+    fileSize: 10 * 1024,
     iterations: 10,
     time: 1000,
-    setup,
-  };
-
-  // Lazy initialization function - runs once across all benchmarks
-  async function setup() {
-    if (!setupPromise) {
-      setupPromise = (async () => {
-        await mkdir(outputDir, { recursive: true });
-        await createFixtures(fixtureDir, 10, 10 * 1024);
-        isSetupComplete = true;
-      })();
-    }
-    return setupPromise;
-  }
-
-  // Process cleanup - run manually after benchmarks complete
-  process.on("beforeExit", async () => {
-    if (isSetupComplete) {
-      if (fixtureDir) await rm(fixtureDir, { recursive: true, force: true });
-      if (outputDir) await rm(outputDir, { recursive: true, force: true });
-      console.log("Cleaned up benchmark fixture and output directories.");
-    }
   });
-
-  benchmarks({ fixtureDir, outputDir, benchOptions });
 });
 
 // ============================================================================
@@ -290,36 +281,12 @@ describe("Small files (10 × 10KB)", () => {
 // ============================================================================
 
 describe("Medium files (100 × 100KB)", () => {
-  const baseDir = tmpdir();
-  const fixtureDir = join(baseDir, `bench-medium-fixtures-${Date.now()}`);
-  const outputDir = join(baseDir, `bench-medium-output-${Date.now()}`);
-  let setupPromise: Promise<void> | null = null;
-  let isSetupComplete = false;
-  const benchOptions = {
+  benchmarks({
+    fileCount: 100,
+    fileSize: 100 * 1024,
     iterations: 5,
     time: 1000,
-    setup,
-  };
-
-  async function setup() {
-    if (!setupPromise) {
-      setupPromise = (async () => {
-        await mkdir(outputDir, { recursive: true });
-        await createFixtures(fixtureDir, 100, 100 * 1024);
-        isSetupComplete = true;
-      })();
-    }
-    return setupPromise;
-  }
-
-  process.on("beforeExit", async () => {
-    if (isSetupComplete) {
-      if (fixtureDir) await rm(fixtureDir, { recursive: true, force: true });
-      if (outputDir) await rm(outputDir, { recursive: true, force: true });
-    }
   });
-
-  benchmarks({ fixtureDir, outputDir, benchOptions });
 });
 
 // ============================================================================
@@ -327,35 +294,11 @@ describe("Medium files (100 × 100KB)", () => {
 // ============================================================================
 
 describe("Large files (5 × 10MB)", () => {
-  const baseDir = tmpdir();
-  const fixtureDir = join(baseDir, `bench-large-fixtures-${Date.now()}`);
-  const outputDir = join(baseDir, `bench-large-output-${Date.now()}`);
-  let setupPromise: Promise<void> | null = null;
-  let isSetupComplete = false;
-  const benchOptions = {
+  benchmarks({
+    fileCount: 5,
+    fileSize: 10 * 1024 * 1024,
     time: 1000,
-    setup,
-  };
-
-  async function setup() {
-    if (!setupPromise) {
-      setupPromise = (async () => {
-        await mkdir(outputDir, { recursive: true });
-        await createFixtures(fixtureDir, 5, 10 * 1024 * 1024);
-        isSetupComplete = true;
-      })();
-    }
-    return setupPromise;
-  }
-
-  process.on("beforeExit", async () => {
-    if (isSetupComplete) {
-      if (fixtureDir) await rm(fixtureDir, { recursive: true, force: true });
-      if (outputDir) await rm(outputDir, { recursive: true, force: true });
-    }
   });
-
-  benchmarks({ fixtureDir, outputDir, benchOptions });
 });
 
 // ============================================================================
@@ -363,34 +306,10 @@ describe("Large files (5 × 10MB)", () => {
 // ============================================================================
 
 describe("Many files (1000 × 1KB)", () => {
-  const baseDir = tmpdir();
-  const fixtureDir = join(baseDir, `bench-many-fixtures-${Date.now()}`);
-  const outputDir = join(baseDir, `bench-many-output-${Date.now()}`);
-  let setupPromise: Promise<void> | null = null;
-  let isSetupComplete = false;
-  const benchOptions = {
+  benchmarks({
+    fileCount: 1000,
+    fileSize: 1024,
     iterations: 5,
     time: 1000,
-    setup,
-  };
-
-  async function setup() {
-    if (!setupPromise) {
-      setupPromise = (async () => {
-        await mkdir(outputDir, { recursive: true });
-        await createFixtures(fixtureDir, 1000, 1024);
-        isSetupComplete = true;
-      })();
-    }
-    return setupPromise;
-  }
-
-  process.on("beforeExit", async () => {
-    if (isSetupComplete) {
-      if (fixtureDir) await rm(fixtureDir, { recursive: true, force: true });
-      if (outputDir) await rm(outputDir, { recursive: true, force: true });
-    }
   });
-
-  benchmarks({ fixtureDir, outputDir, benchOptions });
 });

@@ -23,6 +23,9 @@ export default defineConfig({
       include: ["src/**/*.ts"],
       reporter: ["lcov", "text"],
     },
+    benchmark: {
+      include: ["bench/**/*.bench.ts"],
+    },
     projects: [
       {
         test: {
@@ -42,14 +45,14 @@ export default defineConfig({
         test: {
           name: "browser",
           benchmark: {
-            exclude: ["bench/zip-writing.bench.ts"],
+            exclude: ["bench/zip-writing-files.bench.ts"],
           },
           alias: {
             // vitest follows package.json imports to the compiled file, but we
             // want it to use the src TS file in testing
             "#crc32": "/src/crc-browser.ts",
           },
-          include: ["test/**/*.test.ts"],
+          include: ["test/**/*.test.ts", "bench/zip-writing-browser.bench.ts"],
           exclude: [
             "test/zip64.test.ts",
             "test/crc.test.ts",
