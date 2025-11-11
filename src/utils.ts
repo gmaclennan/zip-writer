@@ -4,7 +4,7 @@ import type {
   EntryInfoInternal,
   EntryInfoStandard,
   EntryInfoZip64,
-} from "./index.js";
+} from "./types.js";
 
 export function getDosTime(date: Date): number {
   return (
