@@ -1,4 +1,4 @@
-import type { EntryOptionsInternal } from "./index.js";
+import type { EntryOptionsInternal } from "./types.js";
 import {
   LOCAL_FILE_HEADER_SIGNATURE,
   DATA_DESCRIPTOR_SIGNATURE,
