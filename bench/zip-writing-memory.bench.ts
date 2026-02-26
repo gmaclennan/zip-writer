@@ -15,7 +15,7 @@ type Entry = {
  */
 async function createFixtures(
   fileCount: number,
-  fileSize: number
+  fileSize: number,
 ): Promise<Entry[]> {
   const entries: Entry[] = [];
 
@@ -44,9 +44,9 @@ async function createFixtures(
   return entries;
 }
 /**
- * Benchmark: zip-writable
+ * Benchmark: zip-writer
  */
-async function benchmarkZipWritable(entries: Entry[]): Promise<void> {
+async function benchmarkZipWriter(entries: Entry[]): Promise<void> {
   const zipWriter = new ZipWriter();
   const consumePromise = zipWriter.readable.pipeTo(createSink());
 
@@ -92,11 +92,11 @@ function benchmarks({
   }
 
   bench(
-    "zip-writable",
+    "zip-writer",
     async () => {
-      await benchmarkZipWritable(entries);
+      await benchmarkZipWriter(entries);
     },
-    { ...benchOptions, setup }
+    { ...benchOptions, setup },
   );
 
   bench("@zip.js/zip.js", async () => benchmarkZipJs(entries), {
