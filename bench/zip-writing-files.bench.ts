@@ -1,7 +1,7 @@
 /**
  * ZIP Writing Benchmarks
  *
- * Compares zip-writable performance against popular Node.js ZIP libraries:
+ * Compares zip-writer performance against popular Node.js ZIP libraries:
  * - archiver: Popular streaming ZIP library
  * - fflate: Fast compression library
  * - @zip.js/zip.js: Modern ZIP library with Web Streams support
@@ -34,7 +34,7 @@ process.on("beforeExit", async () => {
  */
 async function streamToFile(
   stream: ReadableStream<ArrayBufferView>,
-  filePath: string
+  filePath: string,
 ): Promise<void> {
   const nodeStream = Readable.fromWeb(stream as any);
   const fileStream = createWriteStream(filePath);
@@ -81,12 +81,12 @@ async function createFixtures({
 }
 
 /**
- * Benchmark: zip-writable
+ * Benchmark: zip-writer
  */
-async function benchmarkZipWritable(
+async function benchmarkZipWriter(
   fixtureDir: string,
   outputPath: string,
-  crc32?: typeof jsCrc32
+  crc32?: typeof jsCrc32,
 ): Promise<void> {
   const zipWriter = new ZipWriter({ crc32 });
   const streamPromise = streamToFile(zipWriter.readable, outputPath);
@@ -114,7 +114,7 @@ async function benchmarkZipWritable(
  */
 async function benchmarkArchiver(
   fixtureDir: string,
-  outputPath: string
+  outputPath: string,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const output = createWriteStream(outputPath);
@@ -137,7 +137,7 @@ async function benchmarkArchiver(
  */
 async function benchmarkFflate(
   fixtureDir: string,
-  outputPath: string
+  outputPath: string,
 ): Promise<void> {
   const { readdir } = await import("fs/promises");
   const fileNames = await readdir(fixtureDir);
@@ -150,7 +150,7 @@ async function benchmarkFflate(
     readPromises.push(
       readFile(filePath).then((content) => {
         files[fileName] = content;
-      })
+      }),
     );
   }
   await Promise.all(readPromises);
@@ -172,13 +172,13 @@ async function benchmarkFflate(
  */
 async function benchmarkZipJs(
   fixtureDir: string,
-  outputPath: string
+  outputPath: string,
 ): Promise<void> {
   const { readdir } = await import("fs/promises");
   const fileNames = await readdir(fixtureDir);
 
   const zipWriter = new ZipJsWriter(
-    Writable.toWeb(createWriteStream(outputPath)) as WritableStream<Uint8Array>
+    Writable.toWeb(createWriteStream(outputPath)) as WritableStream<Uint8Array>,
   );
 
   const readPromises: Promise<any>[] = [];
@@ -209,30 +209,30 @@ function benchmarks({
   }
 
   bench(
-    "zip-writable",
+    "zip-writer",
     async () => {
       const outputPath = join(tempDir, `zip-bench-output-${i++}.zip`);
-      await benchmarkZipWritable(fixtureDir, outputPath);
+      await benchmarkZipWriter(fixtureDir, outputPath);
     },
-    { setup, ...benchOptions }
+    { setup, ...benchOptions },
   );
 
   bench(
-    "zip-writable (@node-rs/crc32)",
+    "zip-writer (@node-rs/crc32)",
     async () => {
       const outputPath = join(tempDir, `zip-bench-output-${i++}.zip`);
-      await benchmarkZipWritable(fixtureDir, outputPath, nodeRsCrc32);
+      await benchmarkZipWriter(fixtureDir, outputPath, nodeRsCrc32);
     },
-    { setup, ...benchOptions }
+    { setup, ...benchOptions },
   );
 
   bench(
-    "zip-writable (js crc32)",
+    "zip-writer (js crc32)",
     async () => {
       const outputPath = join(tempDir, `zip-bench-output-${i++}.zip`);
-      await benchmarkZipWritable(fixtureDir, outputPath, jsCrc32);
+      await benchmarkZipWriter(fixtureDir, outputPath, jsCrc32);
     },
-    { setup, ...benchOptions }
+    { setup, ...benchOptions },
   );
 
   bench(
@@ -241,7 +241,7 @@ function benchmarks({
       const outputPath = join(tempDir, `zip-bench-output-${i++}.zip`);
       await benchmarkArchiver(fixtureDir, outputPath);
     },
-    { setup, ...benchOptions }
+    { setup, ...benchOptions },
   );
 
   bench(
@@ -250,7 +250,7 @@ function benchmarks({
       const outputPath = join(tempDir, `zip-bench-output-${i++}.zip`);
       await benchmarkFflate(fixtureDir, outputPath);
     },
-    { setup, ...benchOptions }
+    { setup, ...benchOptions },
   );
 
   bench(
@@ -259,7 +259,7 @@ function benchmarks({
       const outputPath = join(tempDir, `zip-bench-output-${i++}.zip`);
       await benchmarkZipJs(fixtureDir, outputPath);
     },
-    { setup, ...benchOptions }
+    { setup, ...benchOptions },
   );
 }
 
