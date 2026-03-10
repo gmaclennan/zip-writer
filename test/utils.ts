@@ -13,7 +13,7 @@ function toHex(buffer: Uint8Array): string {
 // In Node context, import the command directly
 // In browser context, use vitest browser commands
 export async function validateZip(
-  zipBuffer: Uint8Array
+  zipBuffer: Uint8Array,
 ): Promise<ZipEntryInfo[]> {
   const hexString = toHex(zipBuffer);
   let result: ZipEntryInfo[] | { error: Error };
@@ -21,7 +21,7 @@ export async function validateZip(
   // Check if we're in a browser context
   if (typeof window !== "undefined") {
     // Browser: use vitest browser commands
-    const { commands } = await import("vitest/browser");
+    const { commands } = await import("@vitest/browser/context");
     result = await commands.validateZip(hexString);
   } else {
     // Node: use the command directly
@@ -40,7 +40,7 @@ export async function validateZip(
  * Helper to collect a ReadableStream into a Uint8Array
  */
 export async function collectStream(
-  stream: ReadableStream<ArrayBufferView>
+  stream: ReadableStream<ArrayBufferView>,
 ): Promise<Uint8Array> {
   const chunks: Uint8Array[] = [];
   const reader = stream.getReader();
@@ -50,7 +50,7 @@ export async function collectStream(
       const { done, value } = await reader.read();
       if (done) break;
       chunks.push(
-        new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
+        new Uint8Array(value.buffer, value.byteOffset, value.byteLength),
       );
     }
   } finally {
@@ -75,7 +75,7 @@ export async function sha256(data: Uint8Array): Promise<string> {
     // Browser: use Web Crypto API
     const hashBuffer = await crypto.subtle.digest(
       "SHA-256",
-      data as BufferSource
+      data as BufferSource,
     );
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -132,10 +132,15 @@ export function createSink(): WritableStream<Uint8Array> {
  */
 export function errorReadableStream(error: Error, { afterBytes = 0 } = {}) {
   let bytesProduced = 0;
+  let crypto = globalThis.crypto;
   return new ReadableStream({
-    start(controller) {
+    async start(controller) {
       if (afterBytes === 0) {
         controller.error(error);
+      }
+      // Node 18 doesn't have global crypto
+      if (!crypto) {
+        crypto = (await import("node:crypto")).webcrypto as any;
       }
     },
     pull(controller) {
@@ -164,10 +169,10 @@ export function errorWritableStream(error: Error, { afterBytes = 0 } = {}) {
 }
 
 // if you are using TypeScript, you can augment the module
-declare module "vitest/browser" {
+declare module "@vitest/browser/context" {
   interface BrowserCommands {
     validateZip: (
-      zipAsHex: string
+      zipAsHex: string,
     ) => Promise<ZipEntryInfo[] | { error: Error }>;
   }
 }

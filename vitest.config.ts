@@ -1,5 +1,4 @@
 import { defineConfig } from "vitest/config";
-import { playwright } from "@vitest/browser-playwright";
 import type { BrowserInstanceOption } from "vitest/node";
 import { validateZip } from "./test/commands.js";
 
@@ -16,6 +15,10 @@ if (process.platform !== "win32") {
 }
 
 export default defineConfig({
+  server: {
+    // Node 18 on Windows doesn't support listening on IPv6 ::1
+    host: "127.0.0.1",
+  },
   test: {
     reporters: process.env.CI ? ["verbose"] : ["default"],
     coverage: {
@@ -35,6 +38,7 @@ export default defineConfig({
             // vitest follows package.json imports to the compiled file, but we
             // want it to use the src TS file in testing
             "#crc32": "/src/crc-node.ts",
+            "#deflate-raw": "/src/deflate-raw-node.ts",
           },
         },
       },
@@ -51,6 +55,7 @@ export default defineConfig({
             // vitest follows package.json imports to the compiled file, but we
             // want it to use the src TS file in testing
             "#crc32": "/src/crc-browser.ts",
+            "#deflate-raw": "/src/deflate-raw-browser.ts",
           },
           include: ["test/**/*.test.ts", "bench/zip-writing-browser.bench.ts"],
           exclude: [
@@ -64,7 +69,7 @@ export default defineConfig({
             screenshotFailures: false,
             enabled: true,
             headless: true,
-            provider: playwright(),
+            provider: "playwright",
             instances: browserInstances,
             commands: {
               validateZip,

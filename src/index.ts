@@ -1,3 +1,5 @@
+import { createDeflateRawStream } from "#deflate-raw";
+
 import { getDataDescriptor, getLocalFileHeader } from "./write-entry.js";
 import { getCDFH, getEOCD } from "./write-central-directory.js";
 import {
@@ -39,7 +41,7 @@ export class ZipWriter {
     bufferedQueue,
     // Readable buffer, so that temporary delays on writable consumers don't
     // block the zip writing.
-    bufferedQueue
+    bufferedQueue,
   );
   #entries: Readonly<EntryInfoInternal>[] = [];
   #crc32;
@@ -66,7 +68,7 @@ export class ZipWriter {
    */
   entries(): Promise<EntryInfo[]> {
     return this.#mutex.withLock(() =>
-      this.#entries.map((entry) => getPublicEntryInfo(entry))
+      this.#entries.map((entry) => getPublicEntryInfo(entry)),
     );
   }
 
@@ -150,7 +152,7 @@ export class ZipWriter {
       });
       const compressionStream = entryOptions.store
         ? new TransformStream()
-        : new CompressionStream("deflate-raw");
+        : createDeflateRawStream();
       await readable
         .pipeThrough(crcAndSizeStream)
         .pipeThrough(compressionStream)
@@ -216,26 +218,26 @@ export class ZipWriter {
     // comment changed.
     for (const entry of entries) {
       const existingEntry = currentEntriesByOffset.get(
-        BigInt(entry.startOffset)
+        BigInt(entry.startOffset),
       );
       if (!existingEntry) {
         throw new Error(
-          `Cannot set entries: entry at offset ${entry.startOffset} does not exist`
+          `Cannot set entries: entry at offset ${entry.startOffset} does not exist`,
         );
       }
       if (existingEntry.crc32 !== entry.crc32) {
         throw new Error(
-          `Cannot set entries: entry at offset ${entry.startOffset} has different CRC32`
+          `Cannot set entries: entry at offset ${entry.startOffset} has different CRC32`,
         );
       }
       if (existingEntry.uncompressedSize !== BigInt(entry.uncompressedSize)) {
         throw new Error(
-          `Cannot set entries: entry at offset ${entry.startOffset} has different uncompressed size`
+          `Cannot set entries: entry at offset ${entry.startOffset} has different uncompressed size`,
         );
       }
       if (existingEntry.compressedSize !== BigInt(entry.compressedSize)) {
         throw new Error(
-          `Cannot set entries: entry at offset ${entry.startOffset} has different compressed size`
+          `Cannot set entries: entry at offset ${entry.startOffset} has different compressed size`,
         );
       }
     }
