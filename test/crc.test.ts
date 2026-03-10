@@ -1,10 +1,10 @@
 import { describe, it, assert } from "vitest";
 import { crc32 } from "../src/crc-browser.js";
-import { crc32 as zlibCrc32 } from "node:zlib";
+import { crc32 as zlibCrc32 } from "../src/crc-node.js";
+import { randomBytes } from "node:crypto";
 
 describe("CRC32 (tested against zlib)", () => {
-  const testData = new Uint8Array(1024);
-  crypto.getRandomValues(testData);
+  const testData = new Uint8Array(randomBytes(1024));
   const expectedCrc = zlibCrc32(testData);
 
   it("should calculate correct CRC when writing entire buffer at once", () => {

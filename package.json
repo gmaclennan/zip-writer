@@ -15,6 +15,10 @@
     "#crc32": {
       "browser": "./dist/crc-browser.js",
       "default": "./dist/crc-node.js"
+    },
+    "#deflate-raw": {
+      "browser": "./dist/deflate-raw-browser.js",
+      "default": "./dist/deflate-raw-node.js"
     }
   },
   "type": "module",
@@ -49,9 +53,8 @@
     "@types/archiver": "^7.0.0",
     "@types/node": "^24.10.0",
     "@types/yauzl-promise": "^4.0.1",
-    "@vitest/browser": "^4.0.7",
-    "@vitest/browser-playwright": "^4.0.7",
-    "@vitest/coverage-istanbul": "^4.0.7",
+    "@vitest/browser": "^3.2.4",
+    "@vitest/coverage-istanbul": "^3.2.4",
     "@zip.js/zip.js": "^2.8.8",
     "archiver": "^7.0.1",
     "eslint": "^9.39.1",
@@ -65,7 +68,7 @@
     "prettier": "^3.6.2",
     "rimraf": "^6.1.0",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.7",
+    "vitest": "^3.2.4",
     "yauzl-promise": "^4.0.0"
   },
   "lint-staged": {

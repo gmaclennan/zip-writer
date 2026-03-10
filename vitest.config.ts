@@ -1,5 +1,4 @@
 import { defineConfig } from "vitest/config";
-import { playwright } from "@vitest/browser-playwright";
 import type { BrowserInstanceOption } from "vitest/node";
 import { validateZip } from "./test/commands.js";
 
@@ -35,6 +34,7 @@ export default defineConfig({
             // vitest follows package.json imports to the compiled file, but we
             // want it to use the src TS file in testing
             "#crc32": "/src/crc-node.ts",
+            "#deflate-raw": "/src/deflate-raw-node.ts",
           },
         },
       },
@@ -51,6 +51,7 @@ export default defineConfig({
             // vitest follows package.json imports to the compiled file, but we
             // want it to use the src TS file in testing
             "#crc32": "/src/crc-browser.ts",
+            "#deflate-raw": "/src/deflate-raw-browser.ts",
           },
           include: ["test/**/*.test.ts", "bench/zip-writing-browser.bench.ts"],
           exclude: [
@@ -64,7 +65,7 @@ export default defineConfig({
             screenshotFailures: false,
             enabled: true,
             headless: true,
-            provider: playwright(),
+            provider: "playwright",
             instances: browserInstances,
             commands: {
               validateZip,
