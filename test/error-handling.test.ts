@@ -303,10 +303,12 @@ describe("Error Handling", () => {
       const sink = errorWritableStream(forcedError, { afterBytes: 10 });
       const zipWritePromise = zipWriter.readable.pipeTo(sink);
 
-      // Write entry
+      // Larger than the internal stream buffers, otherwise the entry can be
+      // fully buffered before the sink error propagates
       const addEntryPromise = zipWriter.addEntry({
         name: "test.txt",
-        readable: readableFromBytes(new TextEncoder().encode("Hello, world!")),
+        store: true,
+        readable: readableFromBytes(new Uint8Array(256 * 1024)),
       });
 
       // Wait for all to settle
