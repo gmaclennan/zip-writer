@@ -477,7 +477,7 @@ describe("ZIP Integration Tests", () => {
           name: file.name,
           store: true,
           readable: readableFromBytes(new TextEncoder().encode(file.content)),
-          comment: file.comment,
+          ...(file.comment && { comment: file.comment }),
         });
       }
 
