@@ -303,12 +303,15 @@ describe("Error Handling", () => {
       const sink = errorWritableStream(forcedError, { afterBytes: 10 });
       const zipWritePromise = zipWriter.readable.pipeTo(sink);
 
-      // Larger than the internal stream buffers, otherwise the entry can be
-      // fully buffered before the sink error propagates
+      // Incompressible and larger than the internal stream buffers, otherwise
+      // the entry can be fully buffered before the sink error propagates
+      const data = new Uint8Array(256 * 1024);
+      for (let i = 0; i < data.length; i += 65536) {
+        crypto.getRandomValues(data.subarray(i, i + 65536));
+      }
       const addEntryPromise = zipWriter.addEntry({
         name: "test.txt",
-        store: true,
-        readable: readableFromBytes(new Uint8Array(256 * 1024)),
+        readable: readableFromBytes(data),
       });
 
       // Wait for all to settle
