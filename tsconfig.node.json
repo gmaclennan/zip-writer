@@ -1,6 +1,7 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
+    "target": "ES2024",
     "types": ["node"],
     "typeRoots": ["./node_modules/@types"],
     "noEmit": true,

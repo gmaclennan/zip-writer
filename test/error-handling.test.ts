@@ -275,11 +275,7 @@ describe("Error Handling", () => {
     it("Errors the zip readable stream if there's an error reading an entry", async () => {
       const forcedError = new Error("Forced error");
       const zipWriter = new ZipWriter();
-      let deferred = {} as any;
-      deferred.promise = new Promise<any>((resolve, reject) => {
-        deferred.resolve = resolve;
-        deferred.reject = reject;
-      });
+      const deferred = Promise.withResolvers<never>();
       const sink = new WritableStream({
         abort(reason) {
           deferred.reject(reason);

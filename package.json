@@ -15,13 +15,12 @@
     "#crc32": {
       "browser": "./dist/crc-browser.js",
       "default": "./dist/crc-node.js"
-    },
-    "#deflate-raw": {
-      "browser": "./dist/deflate-raw-browser.js",
-      "default": "./dist/deflate-raw-node.js"
     }
   },
   "type": "module",
+  "engines": {
+    "node": ">=22.2.0"
+  },
   "scripts": {
     "test": "run-s test:types test:lint test:vitest",
     "prepare": "husky",

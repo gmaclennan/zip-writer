@@ -132,15 +132,10 @@ export function createSink(): WritableStream<Uint8Array> {
  */
 export function errorReadableStream(error: Error, { afterBytes = 0 } = {}) {
   let bytesProduced = 0;
-  let crypto = globalThis.crypto;
   return new ReadableStream({
-    async start(controller) {
+    start(controller) {
       if (afterBytes === 0) {
         controller.error(error);
-      }
-      // Node 18 doesn't have global crypto
-      if (!crypto) {
-        crypto = (await import("node:crypto")).webcrypto as any;
       }
     },
     pull(controller) {
