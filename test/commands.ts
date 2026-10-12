@@ -3,9 +3,8 @@ import yauzl from "yauzl-promise";
 import { createHash } from "crypto";
 import { writeFile, mkdtemp, rm } from "fs/promises";
 import { tmpdir, platform } from "os";
-import { join, dirname } from "path";
+import { join } from "path";
 import { execa } from "execa";
-import { fileURLToPath } from "url";
 
 type YauzlEntryInfo = {
   [K in keyof yauzl.Entry]: yauzl.Entry[K] extends Function
@@ -18,7 +17,6 @@ export type ZipEntryInfo = YauzlEntryInfo & {
   isDirectory: boolean;
 };
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
 const isWindows = platform() === "win32";
 
 /**
@@ -39,7 +37,7 @@ async function validateWithUnzip(zipFile: string): Promise<void> {
  */
 async function validateWithPython(zipFile: string): Promise<void> {
   if (isWindows) return // skip python validation on win
-  const scriptPath = join(__dirname, "validate-zip.py");
+  const scriptPath = join(import.meta.dirname, "validate-zip.py");
 
   // Run Python validation
   await execa("python3", [scriptPath, zipFile], { timeout: 5000 });

@@ -1,5 +1,3 @@
-import { createDeflateRawStream } from "#deflate-raw";
-
 import { getDataDescriptor, getLocalFileHeader } from "./write-entry.js";
 import { getCDFH, getEOCD } from "./write-central-directory.js";
 import {
@@ -152,7 +150,7 @@ export class ZipWriter {
       });
       const compressionStream = entryOptions.store
         ? new TransformStream()
-        : createDeflateRawStream();
+        : new CompressionStream("deflate-raw");
       await readable
         .pipeThrough(crcAndSizeStream)
         .pipeThrough(compressionStream)

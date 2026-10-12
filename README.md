@@ -30,6 +30,9 @@ and
 npm install zip-writer
 ```
 
+Requires Node.js 22.2 or later. In browsers, requires support for
+`CompressionStream("deflate-raw")`.
+
 ## Basic Usage
 
 ```ts
