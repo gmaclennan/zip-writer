@@ -9,5 +9,10 @@
     // rootDir "." breaks the dist -> src mapping tsc uses for package.json imports
     "paths": { "#crc32": ["./src/crc-node.ts"] }
   },
-  "include": ["vitest.config.ts", "test/**/*.ts", "src/crc-node.ts"]
+  "include": [
+    "vitest.config.ts",
+    "test/**/*.ts",
+    "bench/**/*.ts",
+    "src/crc-node.ts"
+  ]
 }

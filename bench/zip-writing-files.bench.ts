@@ -10,7 +10,7 @@
  * Fixture files are created before each comparison so setup time is excluded from benchmarks.
  */
 
-import { test, type BenchCompareOptions } from "vitest";
+import { afterAll, test, type BenchCompareOptions } from "vitest";
 import { ZipWriter } from "../src/index.js";
 import { mkdir, writeFile, rm, readFile, readdir, mkdtemp } from "fs/promises";
 import { createWriteStream, createReadStream, read } from "fs";
@@ -25,9 +25,7 @@ import { crc32 as nodeRsCrc32 } from "@node-rs/crc32";
 import { crc32 as jsCrc32 } from "../src/crc-browser.js";
 
 const tempDir = await mkdtemp(join(tmpdir(), "zip-bench-"));
-process.on("beforeExit", async () => {
-  await rm(tempDir, { recursive: true, force: true });
-});
+afterAll(() => rm(tempDir, { recursive: true, force: true }));
 
 /**
  * Helper to stream a ReadableStream to a file
@@ -88,7 +86,7 @@ async function benchmarkZipWriter(
   outputPath: string,
   crc32?: typeof jsCrc32,
 ): Promise<void> {
-  const zipWriter = new ZipWriter({ crc32 });
+  const zipWriter = new ZipWriter(crc32 && { crc32 });
   const streamPromise = streamToFile(zipWriter.readable, outputPath);
 
   // Get list of fixture files
