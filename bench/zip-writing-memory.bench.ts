@@ -1,4 +1,4 @@
-import { describe, bench } from "vitest";
+import { test, type BenchCompareOptions } from "vitest";
 import { ZipWriter } from "../src/index.js";
 import { readableFromBytes } from "../src/readable-from-bytes.js";
 import { createSink } from "../test/utils.js";
@@ -76,90 +76,65 @@ async function benchmarkZipJs(entries: Entry[]): Promise<void> {
   await zipWriter.close();
 }
 
-function benchmarks({
-  fileCount,
-  fileSize,
-  ...benchOptions
-}: {
-  fileCount: number;
-  fileSize: number;
-} & import("vitest").BenchOptions) {
-  let entries: Entry[];
+function benchmarks(
+  name: string,
+  {
+    fileCount,
+    fileSize,
+    ...runOptions
+  }: { fileCount: number; fileSize: number } & BenchCompareOptions,
+) {
+  test(name, async ({ bench }) => {
+    const entries = await createFixtures(fileCount, fileSize);
 
-  async function setup() {
-    if (entries) return;
-    entries = await createFixtures(fileCount, fileSize);
-  }
-
-  bench(
-    "zip-writer",
-    async () => {
-      await benchmarkZipWriter(entries);
-    },
-    { ...benchOptions, setup },
-  );
-
-  bench("@zip.js/zip.js", async () => benchmarkZipJs(entries), {
-    ...benchOptions,
-    setup,
-  });
-
-  bench("fflate", async () => {
-    const files: Record<string, Uint8Array> = {};
-    for (const entry of entries) {
-      files[entry.fileName] = entry.content;
-    }
-    // fflate zip is async and uses callbacks
-    return new Promise((resolve, reject) => {
-      fflateZip(files, { level: 6 }, (err, data) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve();
+    await bench.compare(
+      bench("zip-writer", () => benchmarkZipWriter(entries)),
+      bench("@zip.js/zip.js", () => benchmarkZipJs(entries)),
+      bench("fflate", () => {
+        const files: Record<string, Uint8Array> = {};
+        for (const entry of entries) {
+          files[entry.fileName] = entry.content;
         }
-      });
-    });
+        // fflate zip is async and uses callbacks
+        return new Promise<void>((resolve, reject) => {
+          fflateZip(files, { level: 6 }, (err) => {
+            if (err) {
+              reject(err);
+            } else {
+              resolve();
+            }
+          });
+        });
+      }),
+      runOptions,
+    );
   });
 }
 
-// ============================================================================
-// Small Files Benchmark: 10 files × 10KB each
-// ============================================================================
-
-describe("Small files (10 × 10KB)", () => {
-  benchmarks({ fileCount: 10, fileSize: 10 * 1024, iterations: 3, time: 500 });
+benchmarks("Small files (10 × 10KB)", {
+  fileCount: 10,
+  fileSize: 10 * 1024,
+  iterations: 3,
+  time: 500,
 });
 
-// ============================================================================
-// Medium Files Benchmark: 100 files × 100KB each
-// ============================================================================
-
-describe("Medium files (100 × 100KB)", () => {
-  benchmarks({
-    fileCount: 100,
-    fileSize: 100 * 1024,
-    iterations: 2,
-    time: 500,
-  });
+benchmarks("Medium files (100 × 100KB)", {
+  fileCount: 100,
+  fileSize: 100 * 1024,
+  iterations: 2,
+  time: 500,
 });
 
-// ============================================================================
-// Large Files Benchmark: 5 files × 10MB each
-// ============================================================================
-
-describe("Large files (5 × 10MB)", () => {
-  benchmarks({
-    fileCount: 5,
-    fileSize: 10 * 1024 * 1024,
-    iterations: 1,
-    time: 500,
-  });
+benchmarks("Large files (5 × 10MB)", {
+  fileCount: 5,
+  fileSize: 10 * 1024 * 1024,
+  iterations: 1,
+  time: 500,
 });
 
-// ============================================================================
-// Many Files Benchmark: 1000 files × 1KB each
-// ============================================================================
-
-describe("Many files (1000 × 1KB)", () => {
-  benchmarks({ fileCount: 1000, fileSize: 1024, iterations: 2, time: 500 });
+benchmarks("Many files (1000 × 1KB)", {
+  fileCount: 1000,
+  fileSize: 1024,
+  iterations: 2,
+  time: 500,
 });

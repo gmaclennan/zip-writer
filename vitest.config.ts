@@ -1,4 +1,5 @@
 import { defineConfig } from "vitest/config";
+import { playwright } from "@vitest/browser-playwright";
 import type { BrowserInstanceOption } from "vitest/node";
 import { validateZip } from "./test/commands.js";
 
@@ -51,7 +52,7 @@ export default defineConfig({
             // want it to use the src TS file in testing
             "#crc32": "/src/crc-browser.ts",
           },
-          include: ["test/**/*.test.ts", "bench/zip-writing-browser.bench.ts"],
+          include: ["test/**/*.test.ts"],
           exclude: [
             "test/zip64.test.ts",
             "test/crc.test.ts",
@@ -63,7 +64,7 @@ export default defineConfig({
             screenshotFailures: false,
             enabled: true,
             headless: true,
-            provider: "playwright",
+            provider: playwright(),
             instances: browserInstances,
             commands: {
               validateZip,

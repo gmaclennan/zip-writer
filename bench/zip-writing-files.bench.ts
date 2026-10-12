@@ -7,10 +7,10 @@
  * - @zip.js/zip.js: Modern ZIP library with Web Streams support
  *
  * All benchmarks use DEFLATE compression and write to temporary files.
- * Fixture files are lazily initialized using setup hooks to exclude setup time from benchmarks.
+ * Fixture files are created before each comparison so setup time is excluded from benchmarks.
  */
 
-import { describe, bench } from "vitest";
+import { test, type BenchCompareOptions } from "vitest";
 import { ZipWriter } from "../src/index.js";
 import { mkdir, writeFile, rm, readFile, readdir, mkdtemp } from "fs/promises";
 import { createWriteStream, createReadStream, read } from "fs";
@@ -18,7 +18,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { Readable, Writable } from "stream";
 import { pipeline } from "stream/promises";
-import archiver from "archiver";
+import { ZipArchive } from "archiver";
 import { zip as fflateZip } from "fflate";
 import { ZipWriter as ZipJsWriter } from "@zip.js/zip.js";
 import { crc32 as nodeRsCrc32 } from "@node-rs/crc32";
@@ -118,7 +118,7 @@ async function benchmarkArchiver(
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const output = createWriteStream(outputPath);
-    const archive = archiver("zip", {
+    const archive = new ZipArchive({
       zlib: { level: 6 }, // Default compression level
     });
 
@@ -192,124 +192,58 @@ async function benchmarkZipJs(
   await zipWriter.close();
 }
 
-function benchmarks({
-  fileCount,
-  fileSize,
-  ...benchOptions
-}: {
-  fileCount: number;
-  fileSize: number;
-} & import("vitest").BenchOptions) {
-  let fixtureDir: string;
-  let i = 0;
+function benchmarks(
+  name: string,
+  {
+    fileCount,
+    fileSize,
+    ...runOptions
+  }: { fileCount: number; fileSize: number } & BenchCompareOptions,
+) {
+  test(name, async ({ bench }) => {
+    const fixtureDir = await createFixtures({ fileCount, fileSize });
+    let i = 0;
+    const outputPath = () => join(tempDir, `zip-bench-output-${i++}.zip`);
 
-  async function setup() {
-    if (fixtureDir) return;
-    fixtureDir = await createFixtures({ fileCount, fileSize });
-  }
-
-  bench(
-    "zip-writer",
-    async () => {
-      const outputPath = join(tempDir, `zip-bench-output-${i++}.zip`);
-      await benchmarkZipWriter(fixtureDir, outputPath);
-    },
-    { setup, ...benchOptions },
-  );
-
-  bench(
-    "zip-writer (@node-rs/crc32)",
-    async () => {
-      const outputPath = join(tempDir, `zip-bench-output-${i++}.zip`);
-      await benchmarkZipWriter(fixtureDir, outputPath, nodeRsCrc32);
-    },
-    { setup, ...benchOptions },
-  );
-
-  bench(
-    "zip-writer (js crc32)",
-    async () => {
-      const outputPath = join(tempDir, `zip-bench-output-${i++}.zip`);
-      await benchmarkZipWriter(fixtureDir, outputPath, jsCrc32);
-    },
-    { setup, ...benchOptions },
-  );
-
-  bench(
-    "archiver",
-    async () => {
-      const outputPath = join(tempDir, `zip-bench-output-${i++}.zip`);
-      await benchmarkArchiver(fixtureDir, outputPath);
-    },
-    { setup, ...benchOptions },
-  );
-
-  bench(
-    "fflate",
-    async () => {
-      const outputPath = join(tempDir, `zip-bench-output-${i++}.zip`);
-      await benchmarkFflate(fixtureDir, outputPath);
-    },
-    { setup, ...benchOptions },
-  );
-
-  bench(
-    "@zip.js/zip.js",
-    async () => {
-      const outputPath = join(tempDir, `zip-bench-output-${i++}.zip`);
-      await benchmarkZipJs(fixtureDir, outputPath);
-    },
-    { setup, ...benchOptions },
-  );
+    await bench.compare(
+      bench("zip-writer", () => benchmarkZipWriter(fixtureDir, outputPath())),
+      bench("zip-writer (@node-rs/crc32)", () =>
+        benchmarkZipWriter(fixtureDir, outputPath(), nodeRsCrc32),
+      ),
+      bench("zip-writer (js crc32)", () =>
+        benchmarkZipWriter(fixtureDir, outputPath(), jsCrc32),
+      ),
+      bench("archiver", () => benchmarkArchiver(fixtureDir, outputPath())),
+      bench("fflate", () => benchmarkFflate(fixtureDir, outputPath())),
+      bench("@zip.js/zip.js", () => benchmarkZipJs(fixtureDir, outputPath())),
+      runOptions,
+    );
+  });
 }
 
-// ============================================================================
-// Small Files Benchmark: 10 files × 10KB each
-// ============================================================================
-
-describe("Small files (10 × 10KB)", () => {
-  benchmarks({
-    fileCount: 10,
-    fileSize: 10 * 1024,
-    iterations: 10,
-    time: 1000,
-  });
+benchmarks("Small files (10 × 10KB)", {
+  fileCount: 10,
+  fileSize: 10 * 1024,
+  iterations: 10,
+  time: 1000,
 });
 
-// ============================================================================
-// Medium Files Benchmark: 100 files × 100KB each
-// ============================================================================
-
-describe("Medium files (100 × 100KB)", () => {
-  benchmarks({
-    fileCount: 100,
-    fileSize: 100 * 1024,
-    iterations: 5,
-    time: 1000,
-  });
+benchmarks("Medium files (100 × 100KB)", {
+  fileCount: 100,
+  fileSize: 100 * 1024,
+  iterations: 5,
+  time: 1000,
 });
 
-// ============================================================================
-// Large Files Benchmark: 5 files × 10MB each
-// ============================================================================
-
-describe("Large files (5 × 10MB)", () => {
-  benchmarks({
-    fileCount: 5,
-    fileSize: 10 * 1024 * 1024,
-    time: 1000,
-  });
+benchmarks("Large files (5 × 10MB)", {
+  fileCount: 5,
+  fileSize: 10 * 1024 * 1024,
+  time: 1000,
 });
 
-// ============================================================================
-// Many Files Benchmark: 1000 files × 1KB each
-// ============================================================================
-
-describe("Many files (1000 × 1KB)", () => {
-  benchmarks({
-    fileCount: 1000,
-    fileSize: 1024,
-    iterations: 5,
-    time: 1000,
-  });
+benchmarks("Many files (1000 × 1KB)", {
+  fileCount: 1000,
+  fileSize: 1024,
+  iterations: 5,
+  time: 1000,
 });
