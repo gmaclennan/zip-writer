@@ -21,7 +21,7 @@ export async function validateZip(
   // Check if we're in a browser context
   if (typeof window !== "undefined") {
     // Browser: use vitest browser commands
-    const { commands } = await import("@vitest/browser/context");
+    const { commands } = await import("vitest/browser");
     result = await commands.validateZip(hexString);
   } else {
     // Node: use the command directly
@@ -164,7 +164,7 @@ export function errorWritableStream(error: Error, { afterBytes = 0 } = {}) {
 }
 
 // if you are using TypeScript, you can augment the module
-declare module "@vitest/browser/context" {
+declare module "vitest/browser" {
   interface BrowserCommands {
     validateZip: (
       zipAsHex: string,
